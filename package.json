@@ -1,0 +1,17 @@
+{
+  "name": "slack-docmap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Slack /docmap — analyze channel history, extract docs, visualize relationships",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:server": "pnpm --filter @slack-docmap/server run dev",
+    "dev:ui": "pnpm --filter @slack-docmap/ui run dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.1.0"
+}

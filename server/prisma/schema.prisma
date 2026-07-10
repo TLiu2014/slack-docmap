@@ -1,0 +1,82 @@
+// DocMap Phase 3 — Workspace settings + monetization state.
+//
+// Local dev uses SQLite (zero-config, file-based). For production, switch the
+// datasource `provider` to "postgresql" and point DATABASE_URL at your Postgres
+// instance — the schema below is compatible with both.
+//
+// Note: SQLite has no native enum type, so `tier` is modelled as a String whose
+// allowed values ('FREE' | 'PRO' | 'ENTERPRISE') are enforced by the
+// `WorkspaceTier` union in src/db.ts. When migrating to Postgres you may promote
+// this to a real Prisma `enum`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  // Slack team id (e.g. "T0123ABCD") — unique primary key.
+  slackTeamId String @id
+
+  // 'FREE' | 'PRO' | 'ENTERPRISE'
+  tier String @default("FREE")
+
+  // Number of maps generated in the current billing period.
+  usageCount Int @default(0)
+
+  // Start of the current usage window; used to reset the free monthly quota.
+  usagePeriodStart DateTime @default(now())
+
+  // Per-provider BYOK secrets, stored AES-256-GCM encrypted (see src/crypto.ts).
+  // Null means "fall back to the server's primary env key".
+  customOpenAIKey    String?
+  customAnthropicKey String?
+  customGeminiKey    String?
+  customQwenKey      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Persistent store for extracted DocMap graphs. Keyed by the UUID we hand back
+// in the Slack DM link. Reports survive server restarts so `?id=<uuid>` and
+// the in-place doc/user view switcher keep working after redeploys.
+//
+// `graphJson` holds the full DocmapGraph serialized as a JSON string — SQLite
+// doesn't have a native JSON column, but Postgres will (the schema stays
+// compatible when we switch datasources).
+model Graph {
+  id           String   @id
+  graphJson    String
+  channelCount Int      @default(0)
+  days         Int      @default(7)
+  createdAt    DateTime @default(now())
+}
+
+// Per-user /docmap preferences (defaults + whether to skip the config form).
+// Keyed by (team, user) since a user id is only unique within a workspace.
+model UserPref {
+  slackTeamId String
+  slackUserId String
+
+  // Default look-back window in days (matches one of the form's duration options).
+  defaultDays Int @default(7)
+
+  // When true, `/docmap` skips the config form and immediately analyzes the
+  // current channel using defaultDays.
+  skipForm Boolean @default(false)
+
+  // When true, changes on the App Home settings page save immediately without
+  // requiring a Save button click. When false, changes stay pending until the
+  // user hits Save. Defaults to on so new users don't lose changes by accident.
+  autoSave Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([slackTeamId, slackUserId])
+}

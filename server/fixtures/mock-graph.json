@@ -1,0 +1,94 @@
+{
+  "summaryReport": "# Executive Summary\n\nThis report summarizes the technical documentation and resources shared by **tianweiliu2012** in the **#platform-guild** channel. The shared documents focus heavily on establishing the architecture for a new Slack bot, aligning with Kubernetes standards for scheduling and proposals, and utilizing structured templates for design documentation.\n\n## Highlights\n\n- **Slack Bot Framework & Datastore:** The team is building the Slack bot using the Bolt JS framework and has selected Prisma as the backing datastore.\n- **Design & Proposal Standards:** A standardized design-doc template was introduced to ensure consistency, paired with the Kubernetes Enhancements (KEP) format as a reference model.\n- **Kubernetes SIG References:** Multiple Kubernetes community resources were shared to guide job batching and runtime decisions, including the Scheduling SIG notes and SIG Node README.\n- **Onboarding & Governance:** Onboarding items have been added to the docs working-group agenda, and community governance structures were referenced to identify owners and cadences.\n",
+  "users": [{ "id": "U-TIANWEI", "name": "tianweiliu2012" }],
+  "docs": [
+    {
+      "id": "prisma-github",
+      "url": "https://github.com/prisma/prisma",
+      "title": "Prisma GitHub Repository",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "gdoc-scheduling-sig",
+      "url": "https://docs.google.com/document/d/13mwye7nvrmV11q9_Eg77z-1w3X7Q1GTbslpml4J7F3A/edit",
+      "title": "Scheduling SIG Notes",
+      "type": "gdoc",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "github-k8s-sig-node-readme",
+      "url": "https://github.com/kubernetes/community/blob/master/sig-node/README.md",
+      "title": "Kubernetes SIG Node README",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "github-k8s-community",
+      "url": "https://github.com/kubernetes/community",
+      "title": "Kubernetes Community Repository",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "github-bolt-js-readme",
+      "url": "https://github.com/slackapi/bolt-js/blob/main/README.md",
+      "title": "Bolt JS README",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "github-bolt-js",
+      "url": "https://github.com/slackapi/bolt-js",
+      "title": "Bolt JS Repository",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "gdoc-docs-wg-agenda",
+      "url": "https://docs.google.com/document/d/1emuO4nmaQq3K8JZ9-MQeIygtrCPO9kWv7U7RzTaW4F8/edit",
+      "title": "Docs Working-Group Agenda",
+      "type": "gdoc",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "gdoc-node-sync",
+      "url": "https://docs.google.com/document/d/1Ne57gvidMEWXR70OxxnRkYquAoMpt56o75oZtg-OeBg/edit",
+      "title": "Node Sync Runtime Decisions",
+      "type": "gdoc",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "github-k8s-enhancements",
+      "url": "https://github.com/kubernetes/enhancements",
+      "title": "Kubernetes Enhancements (KEP) Repository",
+      "type": "github",
+      "channel": "platform-guild"
+    },
+    {
+      "id": "gdoc-design-doc-template",
+      "url": "https://docs.google.com/document/d/1cE5zrjrR40RXNg64XtRFewSv6FrLV6slGkkqxBumS1w/edit",
+      "title": "Design Doc Template",
+      "type": "gdoc",
+      "channel": "platform-guild"
+    }
+  ],
+  "edges": [
+    { "source": "U-TIANWEI", "target": "prisma-github", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "gdoc-scheduling-sig", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "github-k8s-sig-node-readme", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "github-k8s-community", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "github-bolt-js-readme", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "github-bolt-js", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "gdoc-docs-wg-agenda", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "gdoc-node-sync", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "github-k8s-enhancements", "action": "shared" },
+    { "source": "U-TIANWEI", "target": "gdoc-design-doc-template", "action": "shared" },
+    { "source": "prisma-github", "target": "github-bolt-js", "action": "datastore for" },
+    { "source": "github-bolt-js-readme", "target": "github-bolt-js", "action": "documents" },
+    { "source": "gdoc-design-doc-template", "target": "github-k8s-enhancements", "action": "based on" },
+    { "source": "gdoc-scheduling-sig", "target": "github-k8s-sig-node-readme", "action": "related to" },
+    { "source": "gdoc-node-sync", "target": "github-k8s-sig-node-readme", "action": "informs" },
+    { "source": "gdoc-docs-wg-agenda", "target": "github-k8s-community", "action": "tracked in" }
+  ]
+}

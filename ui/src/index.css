@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+.markdown-body h1 {
+  @apply text-2xl font-semibold mt-6 mb-3;
+}
+.markdown-body h2 {
+  @apply text-xl font-semibold mt-5 mb-2;
+}
+.markdown-body h3 {
+  @apply text-lg font-semibold mt-4 mb-2;
+}
+.markdown-body p {
+  @apply my-2 leading-relaxed text-ink-700;
+}
+.markdown-body ul {
+  @apply list-disc pl-6 my-2 text-ink-700;
+}
+.markdown-body ol {
+  @apply list-decimal pl-6 my-2 text-ink-700;
+}
+.markdown-body code {
+  @apply rounded bg-ink-100 px-1.5 py-0.5 text-sm font-mono text-ink-900;
+}
+.markdown-body a {
+  @apply text-accent underline underline-offset-2;
+}
