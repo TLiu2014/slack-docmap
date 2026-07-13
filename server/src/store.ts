@@ -11,7 +11,7 @@ const DEFAULT_META: GraphMeta = { channelCount: 0, days: 0 };
 /**
  * Persist (or overwrite) a graph in the Graph table. The full DocmapGraph is
  * serialized as a JSON string — SQLite doesn't have a native JSON column, but
- * this stays compatible when we swap the datasource to Postgres for prod.
+ * this stays compatible when we swap the datasource to PostgreSQL for prod.
  */
 export async function saveGraph(
   id: string,

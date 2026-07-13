@@ -1,49 +1,31 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useMemo, useState } from 'react';
 
-import { shareGraph, type ShareResult } from '../api';
+// SEND-IN-SLACK-DISABLED (hackathon submission): the "Send in Slack" form that
+// posted the viewer link into channels/DMs is commented out for the demo.
+// Copy-link is enough for the hackathon flow — the Slack DM DocMap already
+// posts is the primary share surface. Restore this block when we productionize
+// (needs a channel/user picker rather than raw ID paste).
+// import { shareGraph, type ShareResult } from '../api';
 
 interface ShareDialogProps {
   graphId: string;
 }
 
-type SendState =
-  | { status: 'idle' }
-  | { status: 'sending' }
-  | { status: 'sent'; results: ShareResult[] }
-  | { status: 'error'; message: string };
-
-// Rough validation for Slack IDs. Channels start with C/G, users with U/W, and
-// group DMs with G. We accept a comma / newline / space-separated list.
-const ID_PATTERN = /^[CGUW][A-Z0-9]{6,}$/;
-
-function parseDestinations(raw: string): string[] {
-  return Array.from(
-    new Set(
-      raw
-        .split(/[\s,]+/)
-        .map((t) => t.trim())
-        .filter(Boolean),
-    ),
-  );
-}
+// type SendState =
+//   | { status: 'idle' }
+//   | { status: 'sending' }
+//   | { status: 'sent'; results: ShareResult[] }
+//   | { status: 'error'; message: string };
 
 export function ShareDialog({ graphId }: ShareDialogProps) {
   const [open, setOpen] = useState(false);
-  const [rawDestinations, setRawDestinations] = useState('');
-  const [note, setNote] = useState('');
-  const [sharerId, setSharerId] = useState('');
-  const [state, setState] = useState<SendState>({ status: 'idle' });
   const [copied, setCopied] = useState(false);
 
   const shareUrl = useMemo(() => {
     const base = window.location.origin;
     return `${base}/?id=${graphId}`;
   }, [graphId]);
-
-  const destinations = parseDestinations(rawDestinations);
-  const invalid = destinations.filter((d) => !ID_PATTERN.test(d));
-  const validCount = destinations.length - invalid.length;
 
   async function handleCopy() {
     try {
@@ -55,28 +37,9 @@ export function ShareDialog({ graphId }: ShareDialogProps) {
     }
   }
 
-  async function handleSend() {
-    if (validCount === 0) return;
-    setState({ status: 'sending' });
-    try {
-      const res = await shareGraph({
-        graphId,
-        destinations: destinations.filter((d) => ID_PATTERN.test(d)),
-        sharerId: sharerId.trim() || undefined,
-        note: note.trim() || undefined,
-      });
-      setState({ status: 'sent', results: res.results });
-    } catch (err) {
-      setState({ status: 'error', message: (err as Error).message });
-    }
-  }
-
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (!next) {
-      setState({ status: 'idle' });
-      setCopied(false);
-    }
+    if (!next) setCopied(false);
   }
 
   return (
@@ -97,7 +60,7 @@ export function ShareDialog({ graphId }: ShareDialogProps) {
             Share this DocMap
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-ink-400">
-            Copy the link, or send it to Slack channels and users via the DocMap bot.
+            Copy the link — paste it into any Slack channel, DM, doc, or email.
           </Dialog.Description>
 
           {/* Copy link */}
@@ -120,80 +83,28 @@ export function ShareDialog({ graphId }: ShareDialogProps) {
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
+            <p className="mt-2 text-[11px] text-ink-400">
+              Slack auto-unfurls this link into a preview when pasted, so recipients see the
+              summary right in the message.
+            </p>
           </div>
 
-          {/* Send in Slack */}
+          {/*
+          // SEND-IN-SLACK-DISABLED: form that hit /api/graph/:id/share to post
+          // the link into channels/DMs. Left here so it's easy to bring back
+          // once we have a proper channel/user picker (right now users have to
+          // paste raw Slack IDs, which is bad UX).
           <div className="mt-5 border-t border-ink-100 pt-4">
             <div className="text-xs font-medium uppercase tracking-wide text-ink-400">
               Send in Slack
             </div>
             <label className="mt-2 block text-xs text-ink-700">
               Channel and user IDs (comma-separated)
-              <textarea
-                value={rawDestinations}
-                onChange={(e) => setRawDestinations(e.target.value)}
-                placeholder="C0123ABCD, U0456DEFG"
-                rows={2}
-                className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2 font-mono text-xs text-ink-900 focus:border-accent focus:outline-none"
-              />
+              <textarea ... />
             </label>
-            <p className="mt-1 text-[11px] text-ink-400">
-              In Slack, right-click a channel or user → <em>View member details</em> or{' '}
-              <em>Copy link</em> to grab the ID.
-            </p>
-
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-xs text-ink-700">
-                Your Slack user ID (optional)
-                <input
-                  value={sharerId}
-                  onChange={(e) => setSharerId(e.target.value)}
-                  placeholder="U0..."
-                  className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2 font-mono text-xs text-ink-900 focus:border-accent focus:outline-none"
-                />
-              </label>
-              <label className="block text-xs text-ink-700">
-                Note (optional)
-                <input
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Onboarding for the new hire"
-                  maxLength={500}
-                  className="mt-1 w-full rounded-md border border-ink-200 px-3 py-2 text-xs text-ink-900 focus:border-accent focus:outline-none"
-                />
-              </label>
-            </div>
-
-            {invalid.length > 0 && (
-              <div className="mt-2 text-[11px] text-red-600">
-                Ignoring invalid IDs: {invalid.join(', ')}
-              </div>
-            )}
+            ...
           </div>
-
-          {/* Feedback */}
-          {state.status === 'sent' && (
-            <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
-              Sent to {state.results.filter((r) => r.ok).length} of {state.results.length}{' '}
-              destination(s).
-              {state.results.some((r) => !r.ok) && (
-                <ul className="mt-1 list-disc pl-4">
-                  {state.results
-                    .filter((r) => !r.ok)
-                    .map((r) => (
-                      <li key={r.destination}>
-                        <code>{r.destination}</code>: {r.error}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          )}
-          {state.status === 'error' && (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-              {state.message}
-            </div>
-          )}
+          */}
 
           <div className="mt-5 flex justify-end gap-2">
             <Dialog.Close asChild>
@@ -204,14 +115,6 @@ export function ShareDialog({ graphId }: ShareDialogProps) {
                 Close
               </button>
             </Dialog.Close>
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={validCount === 0 || state.status === 'sending'}
-              className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
-            >
-              {state.status === 'sending' ? 'Sending…' : `Send${validCount ? ` (${validCount})` : ''}`}
-            </button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps, type NodeTypes } from '@xyflow/react';
 
-import { docTypeIcon, docTypeLabel } from '../lib/docTypes';
+import { docTypeLabel } from '../lib/docTypes';
 import type { DocmapDoc, DocmapUser } from '../types';
 
 interface BasicNodeData extends Record<string, unknown> {
@@ -39,14 +39,10 @@ export function UserNode({ data }: NodeProps) {
 
 export function DocNode({ data }: NodeProps) {
   const d = data as BasicNodeData;
-  const icon = docTypeIcon(d.sublabel);
   const typeLabel = docTypeLabel(d.sublabel);
   return (
     <div className="flex min-w-[220px] max-w-[260px] flex-col gap-1 rounded-lg border border-accent/40 bg-white p-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        {icon && <span className="text-base leading-none">{icon}</span>}
-        <span className="line-clamp-2 text-sm font-semibold text-ink-900">{d.label}</span>
-      </div>
+      <span className="line-clamp-2 text-sm font-semibold text-ink-900">{d.label}</span>
       {typeLabel && (
         <div className="text-[11px] font-medium uppercase tracking-wide text-accent">
           {typeLabel}
@@ -84,28 +80,24 @@ export function UserCardNode({ data }: NodeProps) {
         <div className="mt-3 border-t border-ink-100 pt-2">
           <div className="text-[10px] uppercase tracking-wide text-ink-400">Curated docs</div>
           <ul className="mt-1 space-y-1.5">
-            {docs.map((d) => {
-              const icon = docTypeIcon(d.type);
-              return (
-                <li key={d.id} className="flex items-center gap-1.5 text-[11px] text-ink-700">
-                  {icon && <span className="shrink-0 leading-none">{icon}</span>}
-                  <a
-                    href={d.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="min-w-0 flex-1 truncate hover:text-accent"
-                    title={d.title || d.url}
-                  >
-                    {d.title || d.url}
-                  </a>
-                  {d.channel && (
-                    <span className="shrink-0 rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">
-                      #{d.channel}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
+            {docs.map((d) => (
+              <li key={d.id} className="flex items-center gap-1.5 text-[11px] text-ink-700">
+                <a
+                  href={d.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 flex-1 truncate hover:text-accent"
+                  title={d.title || d.url}
+                >
+                  {d.title || d.url}
+                </a>
+                {d.channel && (
+                  <span className="shrink-0 rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">
+                    #{d.channel}
+                  </span>
+                )}
+              </li>
+            ))}
           </ul>
         </div>
       ) : (

@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import { docTypeIcon, docTypeLabel } from '../lib/docTypes';
+import { docTypeLabel } from '../lib/docTypes';
 import type { DocmapGraph } from '../types';
 
 export function SummaryReport({ graph }: { graph: DocmapGraph }) {
@@ -36,7 +36,6 @@ export function SummaryReport({ graph }: { graph: DocmapGraph }) {
                   #{doc.channel}
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  {docTypeIcon(doc.type) && <span>{docTypeIcon(doc.type)}</span>}
                   {docTypeLabel(doc.type) || doc.type}
                 </span>
               </div>

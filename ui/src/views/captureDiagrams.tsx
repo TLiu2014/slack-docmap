@@ -25,16 +25,52 @@ function withoutChrome(node: HTMLElement): boolean {
   );
 }
 
-// Render one view into a detached, off-screen container, let React Flow measure
-// + fitView, then rasterize it to a PNG data URL. Resolves null on failure so a
-// single bad view never blocks the rest of the report.
+/**
+ * Wait until the React Flow instance has ingested every node we passed in AND
+ * each of those nodes has been measured (`node.measured.width > 0`). Polling
+ * via requestAnimationFrame catches both signals reliably — the earlier
+ * `useNodesInitialized` hook race-condition can return true before the store
+ * has caught up to the `nodes` prop, so we'd rasterize an empty canvas.
+ */
+function waitForLayout(
+  instance: ReactFlowInstance,
+  expectedCount: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const check = () => {
+      const nodes = instance.getNodes();
+      if (nodes.length >= expectedCount) {
+        const allMeasured = nodes.every((n) => {
+          const m = (n as unknown as { measured?: { width?: number; height?: number } }).measured;
+          return typeof m?.width === 'number' && m.width > 0;
+        });
+        if (allMeasured) return resolve(true);
+      }
+      if (performance.now() - start > timeoutMs) return resolve(false);
+      requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
+}
+
+/**
+ * Render one view into a detached, off-screen container and rasterize it once
+ * every node has been measured. Resolves null on failure so a single bad view
+ * never blocks the rest of the report.
+ */
 function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null> {
+  const layout = buildLayout(mode, graph);
+  if (layout.nodes.length === 0) {
+    return Promise.resolve(null);
+  }
+
   const host = document.createElement('div');
   host.style.cssText =
     `position:fixed;left:-100000px;top:0;width:${CAPTURE_WIDTH}px;height:${CAPTURE_HEIGHT}px;background:#ffffff;`;
   document.body.appendChild(host);
   const root = createRoot(host);
-  const layout = buildLayout(mode, graph);
 
   return new Promise<string | null>((resolve) => {
     let settled = false;
@@ -49,28 +85,33 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
       resolve(value);
     };
 
-    const onInit = (instance: ReactFlowInstance) => {
-      requestAnimationFrame(() => {
-        instance.fitView({ padding: 0.1 });
-        setTimeout(async () => {
-          const el = host.querySelector('.react-flow') as HTMLElement | null;
-          if (!el) return finish(null);
-          try {
-            finish(
-              await toPng(el, {
-                backgroundColor: '#ffffff',
-                pixelRatio: 2,
-                width: CAPTURE_WIDTH,
-                height: CAPTURE_HEIGHT,
-                filter: withoutChrome,
-              }),
-            );
-          } catch (err) {
-            console.error(`[print] capture failed for ${mode} view:`, err);
-            finish(null);
-          }
-        }, 650);
-      });
+    const onInit = async (instance: ReactFlowInstance) => {
+      try {
+        const ready = await waitForLayout(instance, layout.nodes.length, 8000);
+        if (!ready) {
+          console.warn(`[print] ${mode} view: layout not ready within 8s`);
+          return finish(null);
+        }
+        // fitView is async in v12 — resolves after the viewport transform has
+        // been applied. Await it so we don't rasterize a stale frame.
+        await instance.fitView({ padding: 0.1, duration: 0 });
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+        const el = host.querySelector('.react-flow') as HTMLElement | null;
+        if (!el) return finish(null);
+
+        const dataUrl = await toPng(el, {
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          width: CAPTURE_WIDTH,
+          height: CAPTURE_HEIGHT,
+          filter: withoutChrome,
+        });
+        finish(dataUrl);
+      } catch (err) {
+        console.error(`[print] capture failed for ${mode} view:`, err);
+        finish(null);
+      }
     };
 
     root.render(
@@ -79,7 +120,6 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
           nodes={layout.nodes}
           edges={layout.edges}
           nodeTypes={nodeTypes}
-          fitView
           minZoom={0.05}
           maxZoom={2}
           nodesDraggable={false}
@@ -95,8 +135,15 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
       </div>,
     );
 
-    // Hard safety net if onInit / fitView never fires.
-    setTimeout(() => finish(null), 5000);
+    // Hard safety net: onInit is guaranteed to fire, but if the browser is
+    // gnarly (background tab throttling, extension interference) we don't want
+    // to hang the print dialog forever.
+    setTimeout(() => {
+      if (!settled) {
+        console.warn(`[print] ${mode} view: onInit never fired within 15s — bailing.`);
+        finish(null);
+      }
+    }, 15000);
   });
 }
 
@@ -106,11 +153,49 @@ export interface DiagramCaptures {
   user: string | null;
 }
 
-// Capture all three views sequentially (each needs an exclusive off-screen
-// mount) and return their PNG data URLs for the printed report.
-export async function captureAllViews(graph: DocmapGraph): Promise<DiagramCaptures> {
-  const god = await captureView('god', graph);
-  const doc = await captureView('doc', graph);
-  const user = await captureView('user', graph);
-  return { god, doc, user };
+export type ProgressStep = 'god' | 'doc' | 'user' | 'compose';
+
+export interface ProgressUpdate {
+  /** 1-based step index. */
+  current: number;
+  /** Total steps we plan to take (captures + compose). */
+  total: number;
+  /** Which view we're on (or `compose` for the final HTML assembly). */
+  step: ProgressStep;
+  /** Human-readable label a UI can render directly. */
+  label: string;
+}
+
+const STEP_LABELS: Record<ProgressStep, string> = {
+  god: 'Capturing God view…',
+  doc: 'Capturing Doc view…',
+  user: 'Capturing User view…',
+  compose: 'Assembling the printable report…',
+};
+
+/**
+ * Capture all three views sequentially, reporting progress after each step so
+ * a UI can show a spinner / bar while the browser churns. Each capture needs
+ * an exclusive off-screen mount, so we can't parallelize.
+ */
+export async function captureAllViews(
+  graph: DocmapGraph,
+  onProgress?: (update: ProgressUpdate) => void,
+): Promise<DiagramCaptures> {
+  const steps: ViewMode[] = ['god', 'doc', 'user'];
+  const total = steps.length + 1; // + compose
+  const captures: Partial<DiagramCaptures> = {};
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    onProgress?.({ current: i + 1, total, step, label: STEP_LABELS[step] });
+    captures[step] = await captureView(step, graph);
+  }
+
+  onProgress?.({ current: total, total, step: 'compose', label: STEP_LABELS.compose });
+  return {
+    god: captures.god ?? null,
+    doc: captures.doc ?? null,
+    user: captures.user ?? null,
+  };
 }

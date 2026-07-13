@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { captureAllViews, type DiagramCaptures } from './captureDiagrams';
+import { captureAllViews, type DiagramCaptures, type ProgressUpdate } from './captureDiagrams';
 import { docTypeLabel } from '../lib/docTypes';
 import type { DocmapGraph } from '../types';
 
@@ -169,14 +169,17 @@ function buildPrintHtml(graph: DocmapGraph, diagrams: DiagramCaptures): string {
 
 export function PrintButton({ graph }: PrintButtonProps) {
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<ProgressUpdate | null>(null);
 
   async function handleClick() {
     if (busy) return;
     setBusy(true);
+    setProgress(null);
     try {
       // Snapshot all three views off-screen so the printed report includes the
-      // God / Doc / User diagrams, each on its own page.
-      const diagrams = await captureAllViews(graph);
+      // God / Doc / User diagrams, each on its own page. captureAllViews reports
+      // progress after each step so the UI can show a spinner / bar.
+      const diagrams = await captureAllViews(graph, (update) => setProgress(update));
       const html = buildPrintHtml(graph, diagrams);
       const win = window.open('', '_blank');
       if (!win) {
@@ -196,17 +199,57 @@ export function PrintButton({ graph }: PrintButtonProps) {
       alert('Could not build the print view. See console for details.');
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={busy}
-      className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-50"
+    <div className="relative inline-flex flex-col items-end gap-1.5">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busy}
+        aria-busy={busy || undefined}
+        className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-100 disabled:opacity-50"
+      >
+        {busy ? 'Preparing…' : 'Print'}
+      </button>
+      {busy && <PrintProgress progress={progress} />}
+    </div>
+  );
+}
+
+function PrintProgress({ progress }: { progress: ProgressUpdate | null }) {
+  const pct = progress ? Math.round((progress.current / progress.total) * 100) : 5;
+  const label = progress?.label ?? 'Starting…';
+  return (
+    // Floating status card so it doesn't shove the header layout around while
+    // the capture runs. Positioned right under the button, right-aligned.
+    <div
+      role="status"
+      aria-live="polite"
+      className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-ink-200 bg-white p-2 shadow-md"
     >
-      {busy ? 'Preparing…' : 'Print'}
-    </button>
+      <div className="flex items-center gap-2">
+        <span
+          className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-ink-200 border-t-accent"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink-700">
+          {label}
+        </span>
+        {progress && (
+          <span className="shrink-0 text-[10px] tabular-nums text-ink-400">
+            {progress.current}/{progress.total}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-ink-100">
+        <div
+          className="h-full bg-accent transition-[width] duration-200 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
   );
 }

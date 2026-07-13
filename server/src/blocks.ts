@@ -674,7 +674,7 @@ export function buildResultBlocks(opts: {
 
   const blocks: KnownBlock[] = [
     header,
-    openMapButtonBlock(url),
+    // openMapButtonBlock(url),
     viewSwitcher(view, graphId),
     { type: 'divider' },
     ...body,

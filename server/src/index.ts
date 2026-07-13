@@ -5,7 +5,10 @@ import cors from 'cors';
 import express from 'express';
 import { v4 as uuid } from 'uuid';
 
-import { checkSubscriptionLimit } from './billing.js';
+// MONETIZATION-DISABLED (hackathon submission): billing / workspace-tier /
+// BYOK code paths are commented out below but not deleted — they'll come back
+// when we productionize. Search "MONETIZATION-DISABLED" to find every site.
+// import { checkSubscriptionLimit } from './billing.js';
 import {
   ACTION_IDS,
   ANALYZE_MODAL_CALLBACK_ID,
@@ -23,14 +26,14 @@ import {
   buildShareBlocks,
   decodeReportViewValue,
 } from './blocks.js';
-import { encryptSecret } from './crypto.js';
+// import { encryptSecret } from './crypto.js';
 import {
-  getOrCreateWorkspace,
+  // getOrCreateWorkspace,
   getUserPref,
-  isWorkspaceTier,
-  prisma,
+  // isWorkspaceTier,
+  // prisma,
   saveUserPref,
-  type WorkspaceTier,
+  // type WorkspaceTier,
 } from './db.js';
 import { daysAgoIso, parseDocmapText } from './parseParams.js';
 import { runDocmapPipeline } from './pipeline.js';
@@ -131,8 +134,10 @@ httpApp.post('/api/graph/:id/share', async (req, res) => {
   res.json({ url, results });
 });
 
-// ---------- Workspace / billing API ----------
-
+// MONETIZATION-DISABLED: workspace tier lookup, mock Stripe checkout, and
+// Enterprise BYOK key storage endpoints. Restore this block (and the imports
+// above) when re-enabling monetization.
+/*
 interface WorkspacePublic {
   slackTeamId: string;
   tier: WorkspaceTier;
@@ -241,6 +246,7 @@ function applyKeyUpdate(
   const trimmed = value.trim();
   data[field] = trimmed === '' ? null : encryptSecret(trimmed);
 }
+*/
 
 httpApp.listen(PORT, () => {
   console.log(`[http] listening on :${PORT}`);
@@ -266,7 +272,9 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
   slack.command('/docmap', async ({ ack, command, client, respond }) => {
     await ack();
 
-    // Billing gate: enforce the FREE tier monthly quota before doing any work.
+    // MONETIZATION-DISABLED: FREE-tier quota gate. When re-enabling, uncomment
+    // and thread `limit.workspace` back into the pipeline calls below.
+    /*
     const limit = await checkSubscriptionLimit(command.team_id, UI_BASE_URL);
     if (!limit.allowed) {
       await respond({
@@ -276,6 +284,7 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
       });
       return;
     }
+    */
 
     const parsed = parseDocmapText(command.text, command.channel_id);
     // `/docmap settings` (or `config`/`setup`) always reopens the form, even for
@@ -293,7 +302,8 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
           channelIdsToAnalyze: [command.channel_id],
           afterDate: daysAgoIso(7),
           uiBaseUrl: UI_BASE_URL,
-          workspace: limit.workspace,
+          // MONETIZATION-DISABLED: was `workspace: limit.workspace`.
+          workspace: null,
         });
       } catch (err) {
         console.error('[docmap] quick mode failed:', err);
@@ -313,7 +323,8 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
           channelIdsToAnalyze: [command.channel_id],
           afterDate: daysAgoIso(pref.defaultDays),
           uiBaseUrl: UI_BASE_URL,
-          workspace: limit.workspace,
+          // MONETIZATION-DISABLED: was `workspace: limit.workspace`.
+          workspace: null,
         });
       } catch (err) {
         console.error('[docmap] skip-form mode failed:', err);
@@ -373,10 +384,10 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
 
     await respond({ response_type: 'ephemeral', delete_original: true });
 
-    // Usage was already counted when `/docmap` opened this form; here we only
-    // re-read the workspace so the pipeline can route Enterprise BYOK keys.
     const teamId = body.team?.id;
-    const workspace = teamId ? await getOrCreateWorkspace(teamId) : null;
+    // MONETIZATION-DISABLED: workspace fetch previously routed Enterprise BYOK
+    // keys into the pipeline. Restore the fetch when re-enabling monetization.
+    // const workspace = teamId ? await getOrCreateWorkspace(teamId) : null;
 
     // Remember the chosen timeframe + skip preference for next time.
     if (teamId) {
@@ -396,7 +407,7 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
         channelIdsToAnalyze: selectedChannels,
         afterDate: daysAgoIso(selectedDays),
         uiBaseUrl: UI_BASE_URL,
-        workspace,
+        workspace: null,
       });
     } catch (err) {
       console.error('[docmap] interactive mode failed:', err);
@@ -673,7 +684,7 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
     const teamId = body.team?.id;
     if (!userId) return;
 
-    const workspace = teamId ? await getOrCreateWorkspace(teamId) : null;
+    // MONETIZATION-DISABLED: was `const workspace = teamId ? await getOrCreateWorkspace(teamId) : null;`
     try {
       await runDocmapPipeline({
         client,
@@ -682,7 +693,7 @@ if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
         channelIdsToAnalyze: selectedChannels,
         afterDate: daysAgoIso(selectedDays),
         uiBaseUrl: UI_BASE_URL,
-        workspace,
+        workspace: null,
       });
     } catch (err) {
       console.error('[docmap] analyze-modal submit failed:', err);

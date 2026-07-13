@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 
 import { fetchGraph } from './api';
-import { AdminDashboard } from './views/AdminDashboard';
+// MONETIZATION-DISABLED (hackathon submission): admin/billing dashboard is
+// hidden. Restore the import + `/billing` route when re-enabling monetization.
+// import { AdminDashboard } from './views/AdminDashboard';
 import { Docs } from './views/Docs';
 import { Landing } from './views/Landing';
 import { PrintButton } from './views/PrintButton';
@@ -17,9 +19,8 @@ type LoadState =
   | { status: 'ready'; graph: DocmapGraph }
   | { status: 'error'; message: string };
 
-// Fallback team id for the dev/mock admin panel (e.g. when Stripe redirects to
-// /billing without a team query param). Override with ?team=T0123ABCD.
-const DEV_TEAM_ID = 'T_DEV_WORKSPACE';
+// MONETIZATION-DISABLED: fallback team id for the mock admin panel.
+// const DEV_TEAM_ID = 'T_DEV_WORKSPACE';
 
 export function App() {
   return (
@@ -28,7 +29,7 @@ export function App() {
           visit to `/` shows the public landing page. */}
       <Route path="/" element={<Home />} />
       <Route path="/docs" element={<Docs />} />
-      <Route path="/billing" element={<BillingRoute />} />
+      {/* MONETIZATION-DISABLED: <Route path="/billing" element={<BillingRoute />} /> */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -40,6 +41,8 @@ function Home() {
   return id ? <GraphViewer id={id} /> : <Landing />;
 }
 
+// MONETIZATION-DISABLED: /billing route + AdminDashboard container.
+/*
 function BillingRoute() {
   const [params] = useSearchParams();
   const teamId = params.get('team') ?? DEV_TEAM_ID;
@@ -49,6 +52,7 @@ function BillingRoute() {
     </AppShell>
   );
 }
+*/
 
 export function AppShell({
   children,
