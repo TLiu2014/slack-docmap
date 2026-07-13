@@ -122,5 +122,16 @@ export function parseJsonObject<T>(raw: string): T {
       }
     }
   }
-  throw new Error('LLM response contained an unbalanced JSON object');
+
+  // Diagnostic: usually the response got truncated (output-token limit hit)
+  // mid-JSON. Log the length + last chunk so the server operator can tell
+  // truncation apart from a genuinely malformed structure.
+  const tail = text.slice(Math.max(0, text.length - 400));
+  console.error(
+    `[llm] parseJsonObject failed: unbalanced (depth=${depth}, inString=${inString}). ` +
+      `Raw length=${raw.length}. Tail (last 400 chars):\n${tail}`,
+  );
+  throw new Error(
+    'LLM response contained an unbalanced JSON object (likely truncated by the model\'s output-token limit — try a shorter timeframe, fewer channels, or a different provider).',
+  );
 }

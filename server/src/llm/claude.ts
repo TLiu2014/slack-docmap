@@ -31,7 +31,10 @@ export class ClaudeProvider implements ILLMProvider {
 
     const response = await this.client.messages.create({
       model: this.model,
-      max_tokens: 8192,
+      // Full JSON graphs (docs + edges + summary markdown) can push past 8k
+      // for a busy channel; give enough headroom that tool_use never gets
+      // cut off mid-object.
+      max_tokens: 32000,
       temperature: 0.2,
       system: DOCMAP_SYSTEM_PROMPT,
       tools: [

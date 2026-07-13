@@ -34,6 +34,11 @@ export class GeminiProvider implements ILLMProvider {
         systemInstruction: DOCMAP_SYSTEM_PROMPT,
         responseMimeType: 'application/json',
         temperature: 0.2,
+        // Full JSON graphs (docs + edges + summary markdown) frequently push
+        // past the 8k default, especially with longer summaries. Give it
+        // enough headroom to avoid truncated JSON that the parser can't
+        // recover from.
+        maxOutputTokens: 32768,
       },
     });
 

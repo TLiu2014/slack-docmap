@@ -470,6 +470,109 @@ Slack apps are per-workspace: your dev install does **not** carry over.
    on the app config.
 5. Restart `pnpm dev:server` so the new tokens take effect.
 
+#### Getting tokens when you don't have a public OAuth callback
+
+For local dev the Redirect URL is usually a placeholder like
+`https://example.com/slack/oauth/callback` — there's no backend at that
+address to exchange the authorization code for tokens. Once you click Allow,
+Slack redirects the browser to that URL with `?code=<code>&state=` in the
+query string; the browser sees a 404 but **Slack has already minted a valid
+one-time authorization code** (visible in the URL bar). Exchange it manually:
+
+```bash
+curl -s -X POST https://slack.com/api/oauth.v2.access \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "code=THE_CODE_FROM_URL" \
+  -d "redirect_uri=https://example.com/slack/oauth/callback" \
+  | python3 -m json.tool
+```
+
+- `client_id` and `client_secret` live at
+  **api.slack.com/apps/<APP_ID> → Basic Information → App Credentials**.
+- `redirect_uri` **must exactly match** what you set in **OAuth & Permissions
+  → Redirect URLs**, or Slack rejects the exchange with `bad_redirect_uri`.
+- The code is single-use and expires in ~10 minutes. Move quickly.
+
+The response is:
+
+```json
+{
+  "ok": true,
+  "access_token": "xoxb-…",             // → SLACK_BOT_TOKEN
+  "bot_user_id": "U…",
+  "team": { "id": "T…", "name": "…" },
+  "authed_user": {
+    "id": "U…",
+    "access_token": "xoxp-…"            // → SLACK_USER_TOKEN
+  }
+}
+```
+
+Paste `access_token` (`xoxb-…`) into `SLACK_BOT_TOKEN` and
+`authed_user.access_token` (`xoxp-…`) into `SLACK_USER_TOKEN` in `server/.env`.
+`SLACK_APP_TOKEN` (the `xapp-…` for Socket Mode) lives on **Basic Information
+→ App-Level Tokens** and is app-level, not workspace-level — it stays the
+same across installs.
+
+#### Token lifetime — one-time exchange, no refresh
+
+Once tokens are in `.env`, they're long-lived. You only need to redo the
+Allow → curl → paste flow when:
+
+- You **add new scopes** to the app config (existing tokens don't retro-cover them).
+- A workspace admin **uninstalls** DocMap from the sandbox.
+- You **revoke tokens** on api.slack.com/apps/<APP_ID>/oauth.
+- You **rotate the client secret**.
+
+Note that reinstalling the app **does not rotate the tokens** — the `xoxb-…`
+and `xoxp-…` strings stay identical; what changes are the scopes attached.
+The only way to obtain fresh tokens is to run the OAuth flow and exchange
+the fresh code.
+
+#### Common install gotchas
+
+- **OAuth flow installs on the wrong workspace.** Slack routes the install
+  to whichever workspace your browser session is currently signed into. Sign
+  into `https://<sandbox-name>-sandbox.slack.com` *before* clicking Install,
+  or use an explicit `team=T…` param on the OAuth authorize URL to force a
+  specific workspace.
+
+- **`scope_not_allowed_on_enterprise`.** The install is going org-wide but
+  one of the requested scopes (usually a `search:read.*` variant) isn't
+  installable at the org level. Two fixes:
+  - App config → **Manage Distribution** → turn off *"Enable org-wide app installations"*.
+  - Or use the explicit team-scoped URL:
+    ```
+    https://slack.com/oauth/v2/authorize?client_id=<CLIENT_ID>&scope=<bot scopes>&user_scope=<user scopes>&team=T<WORKSPACE_ID>
+    ```
+
+- **`invalid_arguments` on `views.publish` / `invalid user_id`.** The bot
+  token is from a different workspace than the App Home event source. Run
+  `auth.test` on both tokens; the `team_id` needs to match the workspace
+  where you're testing.
+
+- **`feature_not_enabled` on `assistant.search.context`.** The Real-Time
+  Search API isn't turned on for your app tier / workspace. Developer
+  Program sandboxes generally don't grant it. `main` uses the classic
+  `search.messages` for this reason; the `rts-api` branch preserves the RTS
+  implementation for the day it becomes available.
+
+- **`invalid_json` from Slack API curls.** Almost always a smart-quotes
+  problem — copy-pasting the curl from a rich text editor (Notes, Slack
+  messages) converts `"` into `"` / `"`, which JSON doesn't accept. Type
+  the payload in a plain terminal or a code editor.
+
+- **`missing_charset` warning in curl responses.** Harmless — a header hint,
+  not an error. `ok: true` is what matters.
+
+- **Sandbox provisioned without full features.** If you only completed the
+  identity-verification step to provision the sandbox, some Enterprise
+  features (including certain scopes) are unavailable. Use a Slack event
+  code (issued to Developer Program members at Slack events) to unlock the
+  full feature set on the sandbox. Reprovision, reinstall, re-exchange
+  the code.
+
 ### Seed a demo channel
 
 Give viewers something to run `/docmap` against on arrival.

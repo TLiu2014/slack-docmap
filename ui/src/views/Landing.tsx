@@ -42,7 +42,7 @@ function Hero() {
           Challenge
         </a>
         <h1 className="mt-5 text-5xl font-semibold tracking-tight text-ink-900 sm:text-6xl">
-          <span className="text-accent">DocMap</span>: organize every document
+          <span className="text-accent">DocMap</span>: organize documents
           shared in Slack
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-ink-700">
