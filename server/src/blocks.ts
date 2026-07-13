@@ -1,7 +1,36 @@
 import type { HomeView, KnownBlock, ModalView } from '@slack/types';
 
 import { contributionsByUser, contributorsByDoc, labelForType } from './graphView.js';
-import type { DocmapGraph } from './types.js';
+import type { DocmapDoc, DocmapGraph } from './types.js';
+
+/**
+ * Pick a friendly display string for a doc title. LLMs sometimes return the
+ * raw URL as `title` when the surrounding message text doesn't name the doc;
+ * that reads as a wall of URL in Slack. Keep good titles as-is, humanize
+ * URL-shaped ones.
+ */
+function displayDocTitle(doc: Pick<DocmapDoc, 'title' | 'url' | 'type'>): string {
+  const raw = (doc.title ?? '').trim();
+  const looksLikeUrl = /^https?:\/\//i.test(raw);
+  if (raw && !looksLikeUrl) return raw;
+  const url = raw || doc.url || '';
+  if (!url) return labelForType(doc.type) || 'Untitled';
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] || '';
+    if (last) {
+      if (u.hostname.includes('github.com') && segments.length >= 2) {
+        return decodeURIComponent(segments.slice(0, 2).join('/'));
+      }
+      return decodeURIComponent(last);
+    }
+    const label = labelForType(doc.type);
+    return label ? `${label} — ${u.hostname}` : u.hostname;
+  } catch {
+    return raw || url;
+  }
+}
 
 export const FORM_BLOCK_IDS = {
   channels: 'docmap_channels_block',
@@ -492,7 +521,7 @@ function docBlockText(
   contributors: import('./graphView.js').DocContributors | undefined,
 ): string {
   const label = labelForType(doc.type);
-  const title = escapeMrkdwn(doc.title || doc.url);
+  const title = escapeMrkdwn(displayDocTitle(doc));
   const link = doc.url ? `<${doc.url}|${title}>` : title;
 
   const parts: string[] = [`*${link}*`];
@@ -521,7 +550,7 @@ function userBlockText(
     verb: 'authored' | 'mentioned',
   ) => {
     const label = labelForType(d.type);
-    const link = `<${d.url}|${escapeMrkdwn(d.title || d.url)}>`;
+    const link = `<${d.url}|${escapeMrkdwn(displayDocTitle(d))}>`;
     const meta = [label, d.channel ? `#${escapeMrkdwn(d.channel)}` : ''].filter(Boolean).join(' · ');
     return `• ${link}${meta ? ` — ${meta}` : ''} _(${verb})_`;
   };

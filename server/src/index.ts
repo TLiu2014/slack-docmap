@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import bolt from '@slack/bolt';
 import { WebClient } from '@slack/web-api';
 import cors from 'cors';
@@ -247,6 +250,20 @@ function applyKeyUpdate(
   data[field] = trimmed === '' ? null : encryptSecret(trimmed);
 }
 */
+
+// Serve the built UI from the same origin in production so a deployed instance
+// only needs one public URL. The Dockerfile drops the Vite build into
+// `<runtime>/public`, three levels above server/dist/index.js after compile.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UI_DIST = path.resolve(__dirname, '../../public');
+if (existsSync(UI_DIST)) {
+  console.log(`[http] serving UI from ${UI_DIST}`);
+  httpApp.use(express.static(UI_DIST));
+  // SPA fallback: any non-API GET returns index.html so client-side routing works.
+  httpApp.get(/^\/(?!api\/|health).*/, (_req, res) => {
+    res.sendFile(path.join(UI_DIST, 'index.html'));
+  });
+}
 
 httpApp.listen(PORT, () => {
   console.log(`[http] listening on :${PORT}`);

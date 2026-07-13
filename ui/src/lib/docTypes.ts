@@ -48,3 +48,35 @@ export function docTypeIcon(rawType: string | undefined): string {
   if (!rawType) return '';
   return ICONS[rawType.toLowerCase()] ?? '';
 }
+
+/**
+ * Pick a friendly display string for a doc title. LLMs sometimes hand back the
+ * raw URL as `title` when they can't derive a real name from the surrounding
+ * message text — that overflows nodes and table cells. This function keeps
+ * good titles as-is and shortens URL-shaped titles to something readable.
+ */
+export function displayDocTitle(doc: { title?: string; url?: string; type?: string }): string {
+  const raw = (doc.title ?? '').trim();
+  const looksLikeUrl = /^https?:\/\//i.test(raw);
+  if (raw && !looksLikeUrl) return raw;
+
+  const url = raw || doc.url || '';
+  if (!url) return docTypeLabel(doc.type) || 'Untitled';
+
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] || '';
+    if (last) {
+      // github.com/org/repo → "org/repo"; …/README.md → "README.md"
+      if (u.hostname.includes('github.com') && segments.length >= 2) {
+        return decodeURIComponent(segments.slice(0, 2).join('/'));
+      }
+      return decodeURIComponent(last);
+    }
+    const label = docTypeLabel(doc.type);
+    return label ? `${label} — ${u.hostname}` : u.hostname;
+  } catch {
+    return raw || url;
+  }
+}

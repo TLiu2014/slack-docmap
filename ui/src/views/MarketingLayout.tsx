@@ -6,8 +6,7 @@ const ADD_TO_SLACK_URL = 'https://slack.com/oauth/v2/authorize';
 export const GITHUB_REPO_URL = 'https://github.com/TLiu2014/slack-docmap';
 // Devpost page for the Slack Agent Builder Challenge.
 export const HACKATHON_URL = 'https://slackhack.devpost.com/';
-// Placeholder demo-video URL — swap for the real link once the video is up.
-export const DEMO_VIDEO_URL = '#demo-video';
+export const DEMO_VIDEO_URL = 'https://youtu.be/P37qhtkRfv8';
 
 export function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps, type NodeTypes } from '@xyflow/react';
 
-import { docTypeLabel } from '../lib/docTypes';
+import { displayDocTitle, docTypeLabel } from '../lib/docTypes';
 import type { DocmapDoc, DocmapUser } from '../types';
 
 interface BasicNodeData extends Record<string, unknown> {
@@ -89,7 +89,7 @@ export function UserCardNode({ data }: NodeProps) {
                   className="min-w-0 flex-1 truncate hover:text-accent"
                   title={d.title || d.url}
                 >
-                  {d.title || d.url}
+                  {displayDocTitle(d)}
                 </a>
                 {d.channel && (
                   <span className="shrink-0 rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] text-ink-500">

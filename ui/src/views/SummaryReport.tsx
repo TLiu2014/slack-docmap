@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import { docTypeLabel } from '../lib/docTypes';
+import { displayDocTitle, docTypeLabel } from '../lib/docTypes';
 import type { DocmapGraph } from '../types';
 
 export function SummaryReport({ graph }: { graph: DocmapGraph }) {
@@ -29,7 +29,7 @@ export function SummaryReport({ graph }: { graph: DocmapGraph }) {
                 rel="noreferrer"
                 className="text-sm font-medium text-ink-900 hover:text-accent"
               >
-                {doc.title || doc.url}
+                {displayDocTitle(doc)}
               </a>
               <div className="flex flex-wrap items-center gap-2 text-xs text-ink-400">
                 <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent">

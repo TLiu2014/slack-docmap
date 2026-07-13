@@ -8,16 +8,31 @@ import {
   useNodesState,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
+import {
+  captureFlow,
+  delay,
+  nextFrame,
+  VIEW_LABELS,
+  type DiagramCaptures,
+  type ProgressUpdate,
+  type ViewMode,
+} from './captureDiagrams';
 import { nodeTypes } from './nodes';
 import { buildLayout } from './graphBuilders';
 import type { DocmapGraph } from '../types';
 
-type ViewMode = 'god' | 'doc' | 'user';
+export interface VisualMapHandle {
+  captureAll: (onProgress?: (update: ProgressUpdate) => void) => Promise<DiagramCaptures>;
+}
 
-export function VisualMap({ graph }: { graph: DocmapGraph }) {
+export const VisualMap = forwardRef<VisualMapHandle, { graph: DocmapGraph }>(function VisualMap(
+  { graph },
+  ref,
+) {
   const [mode, setMode] = useState<ViewMode>('god');
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const layout = useMemo(() => buildLayout(mode, graph), [mode, graph]);
   // useNodesState / useEdgesState give us the onChange handlers React Flow
@@ -26,6 +41,36 @@ export function VisualMap({ graph }: { graph: DocmapGraph }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(layout.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layout.edges);
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
+
+  // Print support: cycle the live canvas through all three views, fit + snapshot
+  // each, then restore the user's original view. Capturing the on-screen React
+  // Flow is far more reliable than rendering an off-screen copy.
+  useImperativeHandle(
+    ref,
+    () => ({
+      async captureAll(onProgress): Promise<DiagramCaptures> {
+        const original = mode;
+        const out: DiagramCaptures = { god: null, doc: null, user: null };
+        const order = ['god', 'doc', 'user'] as const;
+        for (let i = 0; i < order.length; i++) {
+          const m = order[i];
+          onProgress?.({ current: i + 1, total: order.length, label: `Capturing ${VIEW_LABELS[m]}…` });
+          setMode(m);
+          // Let React commit the new layout + the reset effect run.
+          await delay(150);
+          await nextFrame();
+          rf?.fitView({ padding: 0.12 });
+          // Let fitView's transition finish before rasterizing.
+          await delay(550);
+          out[m] = await captureFlow(containerRef.current);
+        }
+        setMode(original);
+        await delay(50);
+        return out;
+      },
+    }),
+    [mode, rf],
+  );
 
   // On mode / graph change, reset the layout and re-fit the viewport. Using an
   // effect (not a `key` remount) means the ReactFlowProvider survives and the
@@ -64,7 +109,10 @@ export function VisualMap({ graph }: { graph: DocmapGraph }) {
         ))}
       </ToggleGroup.Root>
 
-      <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-ink-200 bg-white">
+      <div
+        ref={containerRef}
+        className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-ink-200 bg-white"
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -101,4 +149,4 @@ export function VisualMap({ graph }: { graph: DocmapGraph }) {
       </div>
     </div>
   );
-}
+});

@@ -42,17 +42,17 @@ and how they reference each other*, not the people.
 
 ## How to use
 
-1. Create (or pick) a channel, e.g. `#platform-guild`.
+1. Create (or pick) a channel, e.g. `#docmap-demo`.
 2. Invite the bot: `/invite @DocMap`.
 3. **Post each line in the code block below as its own Slack message** (copy a line,
    paste, Enter). Keep one link per message — don't merge links into one message,
    or `has:link` will still match but the graph collapses them.
 4. Wait ~10–30s for Slack to index the messages, then run `/docmap` and pick
-   `#platform-guild` (see `LOCAL_DEV.md` → Path B).
+   `#docmap-demo` (see `LOCAL_DEV.md` → Path B).
 
 ---
 
-## Channel: `#platform-guild`
+## Channel: `#docmap-demo`
 
 A platform team that (a) contributes to a couple of Kubernetes SIGs and (b) is
 building an internal Slack bot. Good mix of doc *types* (design doc, meeting
@@ -81,7 +81,7 @@ Nice work everyone — RFC draft goes out Friday, will link it here for review.
 
 ## What a good result looks like
 
-After running `/docmap` over `#platform-guild` you should get a graph with roughly:
+After running `/docmap` over `#docmap-demo` you should get a graph with roughly:
 
 - **Docs (~10):** a Google Doc design-doc template, three Google Doc meeting-notes/
   agenda docs, and six GitHub links (two source repos, a repo file, the Bolt repo

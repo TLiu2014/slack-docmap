@@ -1,6 +1,7 @@
 import Dagre from '@dagrejs/dagre';
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 
+import { displayDocTitle } from '../lib/docTypes';
 import type { DocmapDoc, DocmapGraph } from '../types';
 
 interface Layout {
@@ -50,7 +51,7 @@ export function buildGodView(graph: DocmapGraph): Layout {
       id: nodeId('doc', d.id),
       type: 'doc',
       position: { x: 0, y: 0 },
-      data: { label: d.title || d.url, sublabel: d.type },
+      data: { label: displayDocTitle(d), sublabel: d.type },
     })),
     ...channels.map((c) => ({
       id: nodeId('channel', c),
@@ -135,7 +136,7 @@ export function buildDocView(graph: DocmapGraph): Layout {
       id: nodeId('doc', d.id),
       type: 'doc',
       position: { x: 0, y: 0 },
-      data: { label: d.title || d.url, sublabel: d.type },
+      data: { label: displayDocTitle(d), sublabel: d.type },
     })),
     ...channels.map((c) => ({
       id: nodeId('channel', c),

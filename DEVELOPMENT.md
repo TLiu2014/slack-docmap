@@ -143,15 +143,24 @@ Socket Mode means **no ngrok needed** — Bolt opens a WebSocket to Slack and re
    - `chat:write`
    - `channels:read` (to resolve channel names)
    - `im:history` (needed for the DM welcome message)
-5. Add **User Token Scopes** (required — DocMap uses the Real-Time Search API):
-   - `search:read.public` — public channels (required)
-   - `search:read.private` — private channels (optional)
-   - `search:read.im` — DMs (optional)
-   - `search:read.mpim` — multi-party DMs (optional)
-   > The legacy `search:read` scope alone is **not** enough for the
-   > `assistant.search.context` endpoint — Slack switched to these per-channel-type
-   > scopes when they introduced the Real-Time Search API. Reinstall the app
-   > after adding them.
+5. Add **User Token Scopes**. Which scopes you need depends on which branch
+   you're running:
+   - **`main` (default — classic `search.messages`, works in Developer Program sandboxes):**
+     - `search:read` — required
+   - **`rts-api` branch (Real-Time Search — `assistant.search.context`, requires an RTS-eligible workspace):**
+     - `search:read.public` — public channels (required)
+     - `search:read.private` — private channels (optional)
+     - `search:read.im` — DMs (optional)
+     - `search:read.mpim` — multi-party DMs (optional)
+
+   > **Why two sets of scopes?** DocMap was built and verified against the
+   > Real-Time Search API on a personal workspace, but Developer Program
+   > sandboxes don't enable the "Agents & AI Apps" tier that endpoint
+   > requires — every RTS call from the sandbox returns
+   > `feature_not_enabled`. `main` uses `search.messages` (classic scope,
+   > works everywhere); the `rts-api` branch preserves the RTS
+   > implementation for any RTS-eligible workspace. Reinstall the app after
+   > changing scopes.
 6. **Install to Workspace** (or click *Reinstall to Workspace* if you're
    updating an existing install to add the new scopes). Copy:
    - **Bot User OAuth Token** (`xoxb-...`) → `SLACK_BOT_TOKEN`
@@ -163,7 +172,7 @@ Socket Mode means **no ngrok needed** — Bolt opens a WebSocket to Slack and re
    > tokens, you don't need to update them; just verify the new scopes took
    > effect (see the block right after this list).
 
-##### Verify the RTS scopes actually took effect
+##### Verify the search scopes actually took effect
 
 Because the token string doesn't change on reinstall, it's easy to think the
 new scopes landed when they didn't (e.g. Reinstall clicked before saving the
@@ -178,15 +187,32 @@ curl -s -D - -o /dev/null -X POST https://slack.com/api/auth.test \
   -H "Authorization: Bearer $SLACK_USER_TOKEN" | grep -i x-oauth-scopes
 ```
 
-Expected: the header lists `search:read.public` (and any other `search:read.*`
+Expected on `main`: the header lists `search:read`. Expected on the
+`rts-api` branch: `search:read.public` (and any other `search:read.*`
 scopes you enabled). If not present, go back to **OAuth & Permissions**,
 confirm the scopes are saved, click **Reinstall to Workspace**, authorize.
 
-**B. Call `assistant.search.context` directly**
+**B. Call the search endpoint directly**
 
-Substitute a real channel id from your workspace (right-click a channel in
-Slack → **View channel details** → the id appears at the bottom, format
-`C01234ABCD`):
+Pick the block that matches your branch. Substitute a real channel id from
+your workspace (right-click a channel in Slack → **View channel details** →
+the id appears at the bottom, format `C01234ABCD`).
+
+*`main` (classic `search.messages`):*
+
+```bash
+curl -s -X POST https://slack.com/api/search.messages \
+  -H "Authorization: Bearer $SLACK_USER_TOKEN" \
+  --data-urlencode 'query=in:<#C01234ABCD> has:link' \
+  --data-urlencode 'count=5' | python3 -m json.tool
+```
+
+Outcomes:
+- `{ "ok": true, "messages": { "matches": [...] } }` → wired correctly.
+- `{ "ok": false, "error": "missing_scope", "needed": "search:read" }` → scope not attached; redo steps 5–6.
+- `{ "ok": false, "error": "not_allowed_token_type" }` → you passed a bot token (`xoxb-…`); search runs on the user token.
+
+*`rts-api` branch (Real-Time Search — `assistant.search.context`):*
 
 ```bash
 curl -s -X POST https://slack.com/api/assistant.search.context \
@@ -206,7 +232,7 @@ Outcomes:
 - `{ "ok": false, "error": "missing_scope", "needed": "search:read.public" }` → scopes not attached; redo step 5–6 above.
 - `{ "ok": false, "error": "not_allowed_token_type" }` → you passed a bot token (`xoxb-…`); RTS runs on the user token.
 - `{ "ok": false, "error": "channel_not_found" }` → wrong channel id, or user isn't a member. Pick one you can see in Slack.
-- `{ "ok": false, "error": "feature_not_enabled" }` → the workspace / app tier doesn't have the RTS API turned on. Confirm **Features → Agents & AI Apps** is enabled + saved + the app has been reinstalled since; verify the sandbox workspace has Slack AI features enabled.
+- `{ "ok": false, "error": "feature_not_enabled" }` → the workspace / app tier doesn't have the RTS API turned on. This is expected on Developer Program sandboxes — switch back to `main` (which uses `search.messages`) for sandbox testing.
 
 **C. Run `/docmap quick` and watch the server logs**
 
@@ -216,14 +242,15 @@ pnpm dev:server
 ```
 
 Look for:
-- `✨ Analyzing document connections... (N messages)` in the DM → RTS returned
-  data and the pipeline continued to the LLM.
-- `🚫 No document links found in this timeframe.` → RTS returned zero rows.
+- `✨ Analyzing document connections... (N messages)` in the DM → search
+  returned data and the pipeline continued to the LLM.
+- `🚫 No document links found in this timeframe.` → search returned zero rows.
   Could be a legitimately empty channel, or a scope/id problem hidden as
   "empty results."
-- `[slack] assistant.search.context failed for <channel>: <error>` on the
-  server console → RTS rejected the call. The error string tells you which
-  scope or argument is off.
+- `[slack] search.messages failed for <channel>: <error>` (or
+  `[slack] assistant.search.context failed …` on the `rts-api` branch) on
+  the server console → the call was rejected. The error string tells you
+  which scope or argument is off.
 7. **App icon** — **Basic Information** → **Display Information** → **App icon** →
    upload **`assets/brand/docmap-icon-app-512.png`** (Slack requires PNG/JPG ≥ 512×512).
    Save. The new icon appears in the app directory, the `@DocMap` bot avatar, and
@@ -321,7 +348,7 @@ How this works: Socket Mode means your dev server holds an outbound WebSocket to
 or run `/docmap settings`. Both let you set the default timeframe and toggle
 "skip the form / analyze immediately".
 
-**Tip:** You can also DM the bot — slash commands work in DMs too, and the `channel_id` will be the DM channel. The history fetch will be empty since `assistant.search.context` needs a real channel, but it's useful for verifying the pipeline plumbing without spamming a public channel.
+**Tip:** You can also DM the bot — slash commands work in DMs too, and the `channel_id` will be the DM channel. The history fetch will be empty since the search endpoint needs a real channel, but it's useful for verifying the pipeline plumbing without spamming a public channel.
 
 #### In-Slack report vs. the interactive map (do I need another server?)
 
@@ -358,7 +385,13 @@ SQL
 
 #### Without `SLACK_USER_TOKEN`
 
-`assistant.search.context` is a user-scope API for us — DocMap calls it with the user token. If `SLACK_USER_TOKEN` is missing (or lacks the `search:read.*` scopes), the history fetch returns an empty list and the LLM produces a near-empty graph. The slash command still works end-to-end; you just won't see real content. Use Path A's mock data to validate the UI in that case.
+The search endpoint DocMap uses (`search.messages` on `main`,
+`assistant.search.context` on the `rts-api` branch) is a user-scope API —
+DocMap calls it with the user token. If `SLACK_USER_TOKEN` is missing (or
+lacks the right `search:read` / `search:read.*` scopes for the branch),
+the history fetch returns an empty list and the LLM produces a near-empty
+graph. The slash command still works end-to-end; you just won't see real
+content. Use Path A's mock data to validate the UI in that case.
 
 ## Useful endpoints
 
@@ -577,7 +610,7 @@ the fresh code.
 
 Give viewers something to run `/docmap` against on arrival.
 
-1. Create a channel called `#platform-guild`.
+1. Create a channel (example used throughout: `#docmap-demo`).
 2. `/invite @DocMap`.
 3. Open [`samples/slack-seed-messages.md`](./samples/slack-seed-messages.md)
    and paste each line of the code block as its own Slack message (one link

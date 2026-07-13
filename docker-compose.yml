@@ -1,22 +1,62 @@
+# DocMap deployment stack — one app container + one Postgres container on
+# the same Docker network, with a named volume so Postgres data survives
+# `docker compose down`. Designed to run on a GCE e2-micro VM (Always Free
+# tier) but works anywhere Docker Compose does.
+#
+# Local dev doesn't need this — `pnpm dev` runs against SQLite. This stack
+# is for the deployed instance judges hit.
+
 services:
-  server:
+  postgres:
+    image: postgres:16-alpine
+    container_name: docmap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docmap
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmap-dev}
+      POSTGRES_DB: docmap
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Lean Postgres tuning for e2-micro (1 GB total RAM). Keeps the DB
+    # under ~120 MB resident and leaves room for the app.
+    command: >
+      postgres
+        -c shared_buffers=64MB
+        -c effective_cache_size=128MB
+        -c work_mem=4MB
+        -c maintenance_work_mem=32MB
+        -c max_connections=20
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docmap -d docmap"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  app:
     build:
       context: .
-      dockerfile: server/Dockerfile
-    image: slack-docmap-server:latest
-    container_name: slack-docmap-server
+      dockerfile: Dockerfile
+    image: slack-docmap:latest
+    container_name: docmap-app
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
       - ./server/.env
     environment:
       PORT: 3000
-      # Override UI_BASE_URL when shipping to a non-local host.
-      UI_BASE_URL: ${UI_BASE_URL:-http://localhost:5173}
+      DATABASE_URL: postgresql://docmap:${POSTGRES_PASSWORD:-docmap-dev}@postgres:5432/docmap
+      # UI is served from the same origin — point Slack DMs at the same host.
+      UI_BASE_URL: ${UI_BASE_URL:-http://localhost:3000}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+
+volumes:
+  postgres-data:

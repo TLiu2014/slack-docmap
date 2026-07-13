@@ -1,11 +1,14 @@
 import { useState } from 'react';
 
-import { captureAllViews, type DiagramCaptures, type ProgressUpdate } from './captureDiagrams';
-import { docTypeLabel } from '../lib/docTypes';
+import { type DiagramCaptures, type ProgressUpdate } from './captureDiagrams';
+import { displayDocTitle, docTypeLabel } from '../lib/docTypes';
 import type { DocmapGraph } from '../types';
 
 interface PrintButtonProps {
   graph: DocmapGraph;
+  // Snapshots all three diagram views (God / Doc / User) from the live map,
+  // reporting progress after each step.
+  capture: (onProgress?: (update: ProgressUpdate) => void) => Promise<DiagramCaptures>;
 }
 
 // Escape a small set of chars for safe inclusion in the print-window HTML.
@@ -92,7 +95,7 @@ function buildPrintHtml(graph: DocmapGraph, diagrams: DiagramCaptures): string {
 
   const docRows = graph.docs
     .map((d) => {
-      const title = esc(d.title || d.url);
+      const title = esc(displayDocTitle(d));
       const link = d.url
         ? `<a href="${esc(d.url)}">${title}</a>`
         : title;
@@ -167,7 +170,7 @@ function buildPrintHtml(graph: DocmapGraph, diagrams: DiagramCaptures): string {
 </html>`;
 }
 
-export function PrintButton({ graph }: PrintButtonProps) {
+export function PrintButton({ graph, capture }: PrintButtonProps) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<ProgressUpdate | null>(null);
 
@@ -176,10 +179,10 @@ export function PrintButton({ graph }: PrintButtonProps) {
     setBusy(true);
     setProgress(null);
     try {
-      // Snapshot all three views off-screen so the printed report includes the
-      // God / Doc / User diagrams, each on its own page. captureAllViews reports
+      // Snapshot all three live views so the printed report includes the
+      // God / Doc / User diagrams, each on its own page. `capture` reports
       // progress after each step so the UI can show a spinner / bar.
-      const diagrams = await captureAllViews(graph, (update) => setProgress(update));
+      const diagrams = await capture((update) => setProgress(update));
       const html = buildPrintHtml(graph, diagrams);
       const win = window.open('', '_blank');
       if (!win) {

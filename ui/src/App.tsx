@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 
 import { fetchGraph } from './api';
@@ -10,8 +10,11 @@ import { Landing } from './views/Landing';
 import { PrintButton } from './views/PrintButton';
 import { ShareDialog } from './views/ShareDialog';
 import { SummaryReport } from './views/SummaryReport';
-import { VisualMap } from './views/VisualMap';
+import { VisualMap, type VisualMapHandle } from './views/VisualMap';
+import type { DiagramCaptures } from './views/captureDiagrams';
 import type { DocmapGraph } from './types';
+
+const EMPTY_CAPTURES: DiagramCaptures = { god: null, doc: null, user: null };
 
 type LoadState =
   | { status: 'idle' }
@@ -85,6 +88,7 @@ export function AppShell({
 
 function GraphViewer({ id }: { id: string }) {
   const [state, setState] = useState<LoadState>({ status: 'idle' });
+  const mapRef = useRef<VisualMapHandle>(null);
 
   useEffect(() => {
     setState({ status: 'loading' });
@@ -102,7 +106,12 @@ function GraphViewer({ id }: { id: string }) {
             <span>
               {state.graph.docs.length} docs · {state.graph.users.length} users
             </span>
-            <PrintButton graph={state.graph} />
+            <PrintButton
+              graph={state.graph}
+              capture={(onProgress) =>
+                mapRef.current?.captureAll(onProgress) ?? Promise.resolve(EMPTY_CAPTURES)
+              }
+            />
             <ShareDialog graphId={id} />
           </div>
         ) : undefined
@@ -118,14 +127,20 @@ function GraphViewer({ id }: { id: string }) {
           {state.message}
         </div>
       )}
-      {state.status === 'ready' && <GraphPage graph={state.graph} />}
+      {state.status === 'ready' && <GraphPage graph={state.graph} mapRef={mapRef} />}
     </AppShell>
   );
 }
 
 // Single-page layout: report at the top, diagram below. Tabs removed — the
 // report is short enough that stacking reads better than swapping between them.
-function GraphPage({ graph }: { graph: DocmapGraph }) {
+function GraphPage({
+  graph,
+  mapRef,
+}: {
+  graph: DocmapGraph;
+  mapRef: React.Ref<VisualMapHandle>;
+}) {
   return (
     <div className="flex flex-1 flex-col gap-8">
       <section aria-label="Report" className="print-report">
@@ -135,7 +150,7 @@ function GraphPage({ graph }: { graph: DocmapGraph }) {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-400">
           Visual map
         </h2>
-        <VisualMap graph={graph} />
+        <VisualMap ref={mapRef} graph={graph} />
       </section>
     </div>
   );
