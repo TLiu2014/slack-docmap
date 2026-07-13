@@ -1,19 +1,31 @@
-import { PrismaClient } from '@prisma/client';
-import type { UserPref, Workspace } from '@prisma/client';
+// In-memory replacement for the Prisma-backed data layer. The deployed
+// hackathon instance runs without a database — user prefs live in memory
+// and reset on container restart. Workspace/monetization helpers are
+// exported as no-ops so the (currently disabled) billing code paths in
+// index.ts still typecheck.
 
-/**
- * Single shared PrismaClient. Reused across hot reloads in dev (tsx watch) by
- * stashing it on globalThis to avoid exhausting the connection pool.
- */
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+export interface UserPref {
+  slackTeamId: string;
+  slackUserId: string;
+  defaultDays: number;
+  skipForm: boolean;
+  autoSave: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export type { UserPref, Workspace };
+export interface Workspace {
+  slackTeamId: string;
+  tier: WorkspaceTier;
+  usageCount: number;
+  usagePeriodStart: Date;
+  customOpenAIKey: string | null;
+  customAnthropicKey: string | null;
+  customGeminiKey: string | null;
+  customQwenKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export type WorkspaceTier = 'FREE' | 'PRO' | 'ENTERPRISE';
 export const WORKSPACE_TIERS: readonly WorkspaceTier[] = ['FREE', 'PRO', 'ENTERPRISE'];
@@ -22,69 +34,73 @@ export function isWorkspaceTier(value: string): value is WorkspaceTier {
   return (WORKSPACE_TIERS as readonly string[]).includes(value);
 }
 
-/** Fetch a workspace by Slack team id, creating a default FREE row on first sight. */
-export async function getOrCreateWorkspace(slackTeamId: string): Promise<Workspace> {
-  return prisma.workspace.upsert({
-    where: { slackTeamId },
-    update: {},
-    create: { slackTeamId },
-  });
-}
+// ---------- UserPref (in-memory) ----------
 
-/**
- * Roll the usage window forward if we've crossed into a new calendar month.
- * Keeps the "5 free maps this month" quota honest without a cron job.
- */
-export async function ensureCurrentPeriod(workspace: Workspace): Promise<Workspace> {
-  const now = new Date();
-  const start = workspace.usagePeriodStart;
-  const sameMonth =
-    start.getUTCFullYear() === now.getUTCFullYear() &&
-    start.getUTCMonth() === now.getUTCMonth();
+const prefKey = (teamId: string, userId: string) => `${teamId}:${userId}`;
+const userPrefs = new Map<string, UserPref>();
 
-  if (sameMonth) return workspace;
-
-  return prisma.workspace.update({
-    where: { slackTeamId: workspace.slackTeamId },
-    data: { usageCount: 0, usagePeriodStart: now },
-  });
-}
-
-/** Atomically increment a workspace's usage counter and return the new total. */
-export async function incrementUsage(slackTeamId: string): Promise<number> {
-  const updated = await prisma.workspace.update({
-    where: { slackTeamId },
-    data: { usageCount: { increment: 1 } },
-    select: { usageCount: true },
-  });
-  return updated.usageCount;
-}
-
-/** Fetch a user's saved /docmap preferences, or null if they've never set any. */
 export async function getUserPref(
   slackTeamId: string,
   slackUserId: string,
 ): Promise<UserPref | null> {
-  return prisma.userPref.findUnique({
-    where: { slackTeamId_slackUserId: { slackTeamId, slackUserId } },
-  });
+  return userPrefs.get(prefKey(slackTeamId, slackUserId)) ?? null;
 }
 
-/** Create or update a user's /docmap preferences. */
 export async function saveUserPref(
   slackTeamId: string,
   slackUserId: string,
   data: { defaultDays?: number; skipForm?: boolean; autoSave?: boolean },
 ): Promise<UserPref> {
-  return prisma.userPref.upsert({
-    where: { slackTeamId_slackUserId: { slackTeamId, slackUserId } },
-    update: data,
-    create: {
-      slackTeamId,
-      slackUserId,
-      defaultDays: data.defaultDays ?? 7,
-      skipForm: data.skipForm ?? false,
-      autoSave: data.autoSave ?? true,
-    },
-  });
+  const key = prefKey(slackTeamId, slackUserId);
+  const now = new Date();
+  const existing = userPrefs.get(key);
+  const next: UserPref = existing
+    ? {
+        ...existing,
+        defaultDays: data.defaultDays ?? existing.defaultDays,
+        skipForm: data.skipForm ?? existing.skipForm,
+        autoSave: data.autoSave ?? existing.autoSave,
+        updatedAt: now,
+      }
+    : {
+        slackTeamId,
+        slackUserId,
+        defaultDays: data.defaultDays ?? 7,
+        skipForm: data.skipForm ?? false,
+        autoSave: data.autoSave ?? true,
+        createdAt: now,
+        updatedAt: now,
+      };
+  userPrefs.set(key, next);
+  return next;
+}
+
+// ---------- Workspace / monetization (no-op stubs) ----------
+//
+// The monetization flow is disabled in index.ts (see MONETIZATION-DISABLED
+// comments there). These stubs exist so imports still resolve; every call
+// returns a synthetic FREE-tier workspace with a zeroed usage window.
+
+export async function getOrCreateWorkspace(slackTeamId: string): Promise<Workspace> {
+  const now = new Date();
+  return {
+    slackTeamId,
+    tier: 'FREE',
+    usageCount: 0,
+    usagePeriodStart: now,
+    customOpenAIKey: null,
+    customAnthropicKey: null,
+    customGeminiKey: null,
+    customQwenKey: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function ensureCurrentPeriod(workspace: Workspace): Promise<Workspace> {
+  return workspace;
+}
+
+export async function incrementUsage(_slackTeamId: string): Promise<number> {
+  return 0;
 }

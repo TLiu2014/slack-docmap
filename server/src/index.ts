@@ -252,10 +252,12 @@ function applyKeyUpdate(
 */
 
 // Serve the built UI from the same origin in production so a deployed instance
-// only needs one public URL. The Dockerfile drops the Vite build into
-// `<runtime>/public`, three levels above server/dist/index.js after compile.
+// only needs one public URL. In the Docker runtime image the layout is:
+//   /app/dist/index.js         ← this file at runtime
+//   /app/public/index.html     ← Vite build output
+// so `../public` from __dirname resolves to /app/public.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_DIST = path.resolve(__dirname, '../../public');
+const UI_DIST = path.resolve(__dirname, '../public');
 if (existsSync(UI_DIST)) {
   console.log(`[http] serving UI from ${UI_DIST}`);
   httpApp.use(express.static(UI_DIST));

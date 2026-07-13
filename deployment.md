@@ -1,14 +1,18 @@
 # Deployment guide — DocMap on GCP (GCE e2-micro + Docker Compose)
 
-Deploys the whole stack (Node server + built UI + Postgres) to a single
-Google Compute Engine VM. Fits in the Always Free tier (1 × `e2-micro` per
-month in `us-west1` / `us-central1` / `us-east1`, 30 GB standard disk,
-1 GB North America egress).
+Deploys the app to a single Google Compute Engine VM. Fits in the Always
+Free tier (1 × `e2-micro` per month in `us-west1` / `us-central1` /
+`us-east1`, 30 GB standard disk, 1 GB North America egress).
 
-**One VM, two containers, one persistent volume.** The `app` container
-serves both the Express API and the built React UI from the same origin;
-the `postgres` container stores generated graphs so they survive VM
-restarts. `docker-compose.yml` at the repo root wires them together.
+**One VM, one container.** The `app` container serves both the Express
+API and the built React UI from the same origin. Graphs live in-memory
+in the container (see `server/src/store.ts`) — no database, so restarts
+wipe prior graphs. That's fine for the hackathon demo; a real deployment
+would swap the store back to Prisma-over-Postgres. `docker-compose.prod.yml`
+at the repo root is what runs on the VM.
+
+**Live deployment:** `http://136.112.234.125:3000` (GCE VM `docmap` in
+zone `us-central1-a`, personal project `atlas-orbit-hosting`).
 
 Assumes you already have your personal GCP account set up via
 `.envrc → CLOUDSDK_CONFIG="$HOME/.config/gcloud-personal"` (matching the
@@ -59,18 +63,15 @@ gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
 docker build --platform linux/amd64 -t "$IMAGE" .
 
 # (Optional) smoke-test locally before pushing.
-# The app needs Slack + LLM tokens; simplest is --env-file server/.env.
-# The container also needs a DATABASE_URL that resolves — for a quick
-# smoke test, an in-memory sqlite works after regenerating the client;
-# see § Troubleshooting.
 # docker run --rm -p 3000:3000 --env-file server/.env "$IMAGE"
+# → http://localhost:3000/health  should return {"ok":true}
 
 docker push "$IMAGE"
 ```
 
-Expect ~4–6 minutes for a clean build (workspace install + Vite build +
-TypeScript compile + Prisma generate). Subsequent builds are much
-faster thanks to Docker's layer caching.
+Expect ~3–5 minutes for a clean build (workspace install + Vite build +
+TypeScript compile). Subsequent builds are much faster thanks to Docker's
+layer caching.
 
 **Requirements:** Docker Desktop running locally, `.dockerignore` at
 repo root (already included — excludes `**/node_modules` so the
@@ -83,11 +84,6 @@ container's fresh install isn't overwritten by your macOS/arm64 modules).
 ```bash
 export ZONE=us-central1-a
 export VM_NAME=docmap
-# Auto-generate a Postgres password now; save it somewhere secure. This is
-# also what the app container uses to connect — it's baked into the .env
-# uploaded in step 3.
-export POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '=+/' | head -c 24)
-echo "Save this: POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
 
 gcloud compute instances create "$VM_NAME" \
   --zone="$ZONE" \
@@ -136,58 +132,40 @@ script is still running.
 
 ## 3. Upload the deploy files + `.env` to the VM (one-time, or when env changes)
 
-Two files go to the VM: `docker-compose.yml` (pulls the image + wires
-Postgres) and `server/.env` (Slack / LLM secrets). The `.env` is **not**
-committed; you copy it fresh from your local machine.
+Two files go to the VM. The `.env` is **not** committed; you copy the
+runtime secrets fresh from your local machine each time they change.
 
 ```bash
-# Copy the compose file + a slim .env (only what the deployed app needs).
-gcloud compute scp docker-compose.yml "$VM_NAME:~/docker-compose.yml" --zone="$ZONE"
-gcloud compute scp server/.env "$VM_NAME:~/.env" --zone="$ZONE"
+export VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+  --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
 
-# SSH in and set up the runtime env.
-gcloud compute ssh "$VM_NAME" --zone="$ZONE"
+# 1. Compose file — the single-service, no-DB stack.
+gcloud compute scp docker-compose.prod.yml "$VM_NAME:~/docker-compose.yml" --zone="$ZONE"
+
+# 2. Slack + LLM secrets that the container reads via env_file.
+gcloud compute scp server/.env "$VM_NAME:~/app.env" --zone="$ZONE"
+
+# 3. Compose's own .env — image URI + public URL for docker-compose to interpolate.
+cat > /tmp/docmap.compose.env <<EOF
+IMAGE=us-central1-docker.pkg.dev/$(gcloud config get-value project)/docmap/app:latest
+UI_BASE_URL=http://$VM_IP:3000
+EOF
+gcloud compute scp /tmp/docmap.compose.env "$VM_NAME:~/.env" --zone="$ZONE"
+rm /tmp/docmap.compose.env
 ```
 
-Once you're on the VM:
+SSH in and start the stack:
 
 ```bash
-# Set the Postgres password + image URI + public URL for docker-compose to interpolate.
-cat > .env.deploy <<EOF
-POSTGRES_PASSWORD=<paste the value you saved in step 2>
-UI_BASE_URL=http://$(curl -s ifconfig.me):3000
-IMAGE=us-central1-docker.pkg.dev/$(gcloud config get-value project)/docmap/app:latest
-EOF
-
-# docker-compose reads env vars from the shell OR from a file named .env.
-# We merge the compose vars with the app's runtime .env:
-cat .env.deploy > .env.compose
-echo "" >> .env.compose
-cat .env >> .env.compose
-# .env is what compose reads by default.
-mv .env.compose .env
-
-# Point compose at the pushed image instead of building locally.
-# Easiest: edit docker-compose.yml to replace `build: … / image: slack-docmap:latest`
-# with just `image: ${IMAGE}`. Or use a compose override:
-cat > docker-compose.override.yml <<'EOF'
-services:
-  app:
-    build: !reset null
-    image: ${IMAGE}
-EOF
-
-# Log Docker into Artifact Registry (uses the VM's default service-account creds).
-gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-# Pull + start.
+gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command='
+sudo gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 sudo docker compose pull
 sudo docker compose up -d
 sudo docker compose ps
+'
 ```
 
-Expect all three states to show `running` and `healthy` within ~30
-seconds. Tail logs to watch the boot:
+Expect the container to reach `Up (healthy)` within ~15 seconds. Tail logs to watch the boot:
 
 ```bash
 sudo docker compose logs -f app
@@ -211,11 +189,11 @@ Verify:
 
 ```bash
 # From your laptop, hit the deployed URL.
-curl -s http://<VM_EXTERNAL_IP>:3000/health
+curl -s http://$VM_IP:3000/health
 # → {"ok":true}
 
-# Open the demo graph in a browser.
-open "http://<VM_EXTERNAL_IP>:3000/?id=demo"
+# Landing + docs pages.
+open "http://$VM_IP:3000/"
 ```
 
 Then run `/docmap quick` from your sandbox — the DM's **Open interactive
@@ -227,6 +205,11 @@ Grab the VM's external IP any time with:
 gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
 ```
+
+> **Note:** the ephemeral external IP changes if you `stop` the VM. Any
+> viewer URLs already DM'd by Slack will 404 after a stop/start. To keep
+> a stable URL long-term, either reserve a static external IP or put a
+> domain name in front.
 
 ---
 
@@ -240,11 +223,14 @@ docker push "$IMAGE"
 # 2. On the VM, pull + restart.
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command="\
   sudo docker compose pull app && \
-  sudo docker compose up -d app && \
+  sudo docker compose up -d app --force-recreate && \
   sudo docker compose ps"
 ```
 
-Postgres data persists across restarts (named volume `postgres-data`).
+Graphs are in-memory, so any prior `?id=<uuid>` links 404 after a
+restart. Judges hitting the deployed instance during judging shouldn't
+notice — a `/docmap` run creates its own graph and the viewer URL is
+usable within that session.
 
 ---
 
@@ -252,8 +238,9 @@ Postgres data persists across restarts (named volume `postgres-data`).
 
 - **Running**: $0 within Always Free tier. e2-micro compute, 30 GB
   standard disk, and NA egress are all in-tier. Artifact Registry storage
-  is ~$0.10/GB/mo above 0.5 GB; a single DocMap image is ~200 MB.
-- **Stop the VM (keeps disk + data)**: `gcloud compute instances stop "$VM_NAME" --zone="$ZONE"` — pays only for the disk (~$1.20/mo for 30 GB), Postgres data preserved.
+  is ~$0.10/GB/mo above 0.5 GB; a single DocMap image is ~200 MB, so a
+  few builds worth of images stay under.
+- **Stop the VM (keeps disk)**: `gcloud compute instances stop "$VM_NAME" --zone="$ZONE"` — pays only for the disk (~$1.20/mo for 30 GB). Ephemeral IP is released; restart will assign a new one.
 - **Fully delete everything**:
   ```bash
   gcloud compute instances delete "$VM_NAME" --zone="$ZONE" --quiet
@@ -271,15 +258,12 @@ Postgres data persists across restarts (named volume `postgres-data`).
   and confirm you're on the personal gcloud config with
   `gcloud config list`.
 - **App container restarts in a loop** — check `sudo docker compose logs app`.
-  Common causes: `SLACK_BOT_TOKEN` missing from uploaded `.env`, or
-  `DATABASE_URL` not resolving because Postgres isn't healthy yet. The
-  `depends_on: service_healthy` should prevent the latter but a slow VM
-  can still race.
-- **`prisma migrate deploy` says "no migration files"** — that's expected
-  for a fresh setup; the container falls back to `prisma db push` and
-  creates tables from the schema.
+  Most common cause: `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` /
+  `GEMINI_API_KEY` missing from the uploaded `app.env`.
 - **Judges hit "connection refused"** — firewall rule not applied. Verify
   the VM has the `docmap-http` network tag: `gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(tags)'`.
 - **OOM kills on e2-micro** — 1 GB RAM is tight. If it happens under
-  load, drop `shared_buffers` in `docker-compose.yml` from 64MB to 32MB,
-  or upgrade the VM to `e2-small` (~$13/mo).
+  load, upgrade to `e2-small` (~$13/mo) or move to Cloud Run + Cloud SQL.
+- **Viewer URL 404s after a container restart** — expected. The deployed
+  instance uses an in-memory graph store. Ask the user to re-run
+  `/docmap` and use the fresh DM link.

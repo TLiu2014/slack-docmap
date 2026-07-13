@@ -8,20 +8,15 @@
     "dev": "tsx watch src/index.ts",
     "mcp": "tsx src/mcp/server.ts",
     "mcp:start": "node dist/mcp/server.js",
-    "build": "prisma generate && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "tunnel": "ngrok http 3000",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@google/genai": "^0.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@prisma/client": "^5.22.0",
     "@slack/bolt": "^3.21.4",
     "@slack/types": "^2.14.0",
     "@slack/web-api": "^6.13.0",
@@ -38,7 +33,6 @@
     "@types/node": "^22.9.0",
     "@types/uuid": "^10.0.0",
     "ngrok": "^5.0.0-beta.2",
-    "prisma": "^5.22.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

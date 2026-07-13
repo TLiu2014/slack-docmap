@@ -1,5 +1,5 @@
 import { tryDecryptSecret } from '../crypto.js';
-import { prisma, type Workspace } from '../db.js';
+import type { Workspace } from '../db.js';
 import { ClaudeProvider } from './claude.js';
 import { GeminiProvider } from './gemini.js';
 import { OpenAIProvider } from './openai.js';
@@ -76,11 +76,10 @@ export async function getLLMProvider(selection: ProviderSelection = {}): Promise
 }
 
 async function resolveWorkspace(selection: ProviderSelection): Promise<Workspace | null> {
-  if (selection.workspace !== undefined) return selection.workspace;
-  if (selection.slackTeamId) {
-    return prisma.workspace.findUnique({ where: { slackTeamId: selection.slackTeamId } });
-  }
-  return null;
+  // Monetization / BYOK is disabled for the hackathon build. If the caller
+  // passes a workspace explicitly we honour it; otherwise we return null
+  // and the provider falls back to the env-var API key.
+  return selection.workspace ?? null;
 }
 
 export type { ILLMProvider, GenerateGraphRequest, GraphData } from './types.js';

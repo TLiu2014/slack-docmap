@@ -14,3 +14,4 @@ coverage/
 *.db-journal
 server/prisma/*.db
 server/prisma/migrations/dev/
+.deploy-secrets.local

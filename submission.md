@@ -58,11 +58,21 @@ Two surfaces, one shared pipeline.
   feature branch, ready to reactivate on any workspace where the RTS tier
   is available. Both paths are capped at 100 messages per run and scoped
   to the invoker's own visibility.
-- **Persistence** — Prisma over SQLite locally, Postgres in production.
-  Every graph is keyed by UUID so a Slack-generated graph is retrievable
-  from MCP and vice versa.
+- **Persistence** — Prisma over SQLite for local development so graphs
+  survive server restarts. The deployed instance runs without a database
+  — graphs live in an in-memory `Map` for the container's lifetime — so
+  the whole app ships as one small image and boots instantly. For the
+  demo that trade-off is fine (a `/docmap` run and its viewer URL live
+  well within one session); a real deployment would swap the in-memory
+  store back to Prisma-over-Postgres.
 - **Frontend** — Vite + React + `@xyflow/react` for the canvas, Tailwind
   for styling, `html-to-image` for the print pipeline.
+- **Deployment** — one multi-stage Dockerfile builds the Vite UI + Node
+  server into a single `node:22-alpine` runtime image (~200 MB). Pushed
+  to Google Artifact Registry, pulled by a GCE `e2-micro` VM (always-free
+  tier), started with `docker compose up -d`. The container serves both
+  UI and API from port 3000; Slack Bolt reaches Slack over an outbound
+  WebSocket (Socket Mode) so no inbound URL config is needed.
 
 ## Challenges we ran into
 
@@ -76,6 +86,16 @@ Two surfaces, one shared pipeline.
   `search.messages` endpoint; the RTS implementation is preserved on the
   `rts-api` branch and re-activates the moment it runs on a workspace
   where the tier is enabled.
+- **Right-sizing the deployment.** Judges click "Open interactive map" in
+  Slack and expect it to render — the map can't live on our laptop. First
+  attempt was a two-container stack (app + Postgres) on a GCE `e2-micro`,
+  which ran into a chain of small issues: Prisma Client's musl engine
+  needs `libssl` at runtime, `npx prisma` at container start was
+  downloading the CLI on every boot, and the `pnpm deploy --prod` layout
+  changed with pnpm 11 (needs `--legacy`). We simplified by dropping the
+  database entirely for the deployed instance — one image, in-memory
+  graph store, no schema init step, boots in seconds. Local dev still
+  uses SQLite/Prisma for persistence during iteration.
 - **Off-screen React Flow rasterization.** The print feature has to snapshot
   three graph views the user never sees. React Flow measures nodes with
   a ResizeObserver on each node's DOM — but Chromium silently skips
@@ -113,6 +133,9 @@ Two surfaces, one shared pipeline.
   (branch `rts-api`, verified on a personal workspace); the shipping
   `main` branch is the classic-API fallback so the demo runs in any
   sandbox judges throw at it.
+- **Deployed on GCP's always-free tier.** One `e2-micro` VM, one
+  Docker Compose file, one command to redeploy after a code change — all
+  within the free tier so hosting costs $0 for the demo window.
 
 ## What we learned
 
@@ -135,6 +158,9 @@ Two surfaces, one shared pipeline.
   `rts-api` branch is drop-in; the moment a target workspace has the
   "Agents & AI Apps" tier enabled, `main` swaps back to
   `assistant.search.context` with no other code changes.
+- **Bring back durable storage for the deployed instance.** Add a
+  managed Postgres (Cloud SQL) or SQLite-on-persistent-disk beside the
+  container so graphs survive restarts and can be revisited days later.
 - **Push-based ingestion** — watch channels for new doc links and update
   the persisted graph incrementally so the map is always current.
 - **Cross-channel merging** — one graph across multiple channels, threads,

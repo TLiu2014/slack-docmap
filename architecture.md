@@ -1,10 +1,17 @@
 # DocMap architecture
 
 DocMap has two triggers (Slack slash command, MCP tool) that call **one
-backend**, which persists every generated graph to **one database** and hands
-back a URL to the **Report UI** for the interactive viewer. All persistent
-state lives in a Prisma-managed database — SQLite for local dev, PostgreSQL
-for production (same schema, one datasource config change).
+backend**, which stores every generated graph under a UUID and hands back
+a URL to the **Report UI** for the interactive viewer. The diagram below
+shows the *intended* persistence layer — a Prisma-managed database
+(SQLite for local dev, PostgreSQL for production).
+
+> **Current state (hackathon deploy):** the deployed GCE VM and local
+> dev both use an in-memory graph store instead of the Prisma database
+> shown in the diagram. The Prisma schema is preserved at
+> `server/prisma/schema.prisma` for when the persistence toggle
+> (`PERSISTENCE=prisma|memory`) lands. Every other edge in the diagram
+> is unchanged.
 
 ## System diagram
 

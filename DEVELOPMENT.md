@@ -26,74 +26,25 @@ pnpm install
 cp server/.env.example server/.env
 ```
 
-### Database (Prisma + SQLite)
+### Persistence
 
-The server persists per-user preferences (`UserPref`) and **generated report
-graphs** (`Graph`) in a local database. Local dev uses SQLite (zero-config,
-file at `server/prisma/dev.db`); production can switch the datasource
-`provider` in `server/prisma/schema.prisma` to `postgresql` without any code
-changes (the schema is compatible with both).
+**Current state: none.** Both local dev and the GCP deployment use an
+in-memory graph store (see `server/src/store.ts`) and in-memory user
+prefs (see `server/src/db.ts`). Restarting the server clears every prior
+`?id=<uuid>` viewer URL, and `/docmap` prefs reset to defaults.
 
-Storing `Graph` in Prisma means Slack DM links keep working across server
-restarts and redeploys — before this, the in-memory `Map` reset on every reload
-and any shared `?id=<uuid>` URL 404'd afterward.
+For the hackathon demo this is a deliberate trade-off — one small image,
+instant boot, no schema init step — but it also means a graph stored
+locally doesn't survive a `pnpm dev` restart. If that starts to bite,
+the roadmap is to reintroduce a `PERSISTENCE=prisma|memory` toggle so
+local dev goes back to SQLite via Prisma while the deploy stays
+in-memory.
 
-```bash
-# Create the SQLite db and generate the Prisma client (uses DATABASE_URL from server/.env)
-pnpm --filter @slack-docmap/server run db:push
-```
-
-`server/.env` must define (see `server/.env.example`):
-
-- `DATABASE_URL` — defaults to `file:./dev.db` (resolved next to the Prisma schema).
-
-#### Inspecting the database (Prisma Studio)
-
-```bash
-pnpm --filter @slack-docmap/server run db:studio
-```
-
-This launches **Prisma Studio**, a local web GUI (opens `http://localhost:5555`)
-for browsing and editing the rows in whatever database `DATABASE_URL` points at —
-here the local SQLite file, showing the `UserPref` and `Graph` tables. It's
-how you'd inspect cached report graphs or reset a user's `/docmap` preferences.
-
-- **It is a developer/admin tool, not part of the app.** Nothing in DocMap serves
-  it; it only runs when you run that command, and it binds to `localhost`.
-- **Local dev:** great for poking at data. Since it points at your SQLite file, it
-  only sees local data.
-- **Production:** technically you *can* point it at a production PostgreSQL
-  (`DATABASE_URL=postgres://… pnpm --filter @slack-docmap/server exec prisma studio`),
-  but treat it like direct DB access: run it from a trusted machine over a secure
-  tunnel, **never expose port 5555 publicly**, and prefer read-only credentials.
-  It should not be deployed or left running in production.
-
-#### Production: swap to PostgreSQL
-
-The schema is dual-target; the switch is a config change, not a rewrite. When
-moving off local SQLite:
-
-1. In `server/prisma/schema.prisma`, change the `datasource db` block:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. Point `DATABASE_URL` at your PostgreSQL instance (Cloud SQL, Neon, Supabase, RDS, …). Example:
-   ```
-   DATABASE_URL=postgresql://user:pass@host:5432/docmap?schema=public
-   ```
-3. Run `pnpm --filter @slack-docmap/server exec prisma migrate deploy` (or `db push` for a first bootstrap) against the new DB.
-4. Redeploy. `Graph`, `Workspace`, and `UserPref` all persist as before — no
-   caller-side changes because store.ts talks to Prisma, not directly to SQLite.
-
-PostgreSQL considerations:
-- The `Graph.graphJson` column stays as `String` on both engines. If you want
-  native JSON querying in prod, promote it to `Json` at the schema level once
-  you've switched.
-- Add a periodic sweep to delete old `Graph` rows if you don't want to keep
-  every report forever — nothing does this automatically today.
+The Prisma schema still lives at `server/prisma/schema.prisma` and is
+intentionally left in place so the toggle can be added in a small diff.
+None of the `db:push` / `db:studio` / `db:generate` scripts are wired
+into `server/package.json` right now — they'll come back with the
+toggle.
 
 ## Two ways to run
 
@@ -374,13 +325,8 @@ pnpm dev:server          # only the API / Slack app
 pnpm dev:ui              # only the React UI
 
 # Reset YOUR /docmap preferences (default timeframe + skip-the-form toggle):
-#  • Easiest: open the DocMap app → Home tab, or run `/docmap settings`, and change them.
-#  • Wipe them from the DB with Prisma Studio (see below) — delete your row in the
-#    `UserPref` table — or reset every user's prefs:
-pnpm --filter @slack-docmap/server exec -- \
-  prisma db execute --schema prisma/schema.prisma --stdin <<'SQL'
-DELETE FROM "UserPref";
-SQL
+#  • In-memory persistence: just restart `pnpm dev` — every user's prefs are cleared.
+#  • Alternatively: open the DocMap app → Home tab, or run `/docmap settings`, and change them.
 ```
 
 #### Without `SLACK_USER_TOKEN`
@@ -433,7 +379,6 @@ spawn it. For Claude Desktop, edit `~/Library/Application Support/Claude/claude_
       "command": "node",
       "args": ["/absolute/path/to/slack-docmap/server/dist/mcp/server.js"],
       "env": {
-        "DATABASE_URL": "file:/absolute/path/to/slack-docmap/server/prisma/dev.db",
         "SLACK_USER_TOKEN": "xoxp-...",
         "ACTIVE_LLM": "gemini",
         "GEMINI_API_KEY": "...",
@@ -445,8 +390,14 @@ spawn it. For Claude Desktop, edit `~/Library/Application Support/Claude/claude_
 ```
 
 Notes:
-- Point `DATABASE_URL` at the same SQLite file the HTTP/Slack server uses so
-  both surfaces read/write the same graphs.
+- The MCP server currently runs against the same in-memory graph store
+  as the HTTP/Slack surface **within a single Node process**. If your
+  MCP host spawns a separate `node dist/mcp/server.js` process, its
+  store is independent of the HTTP server's — so a graph generated from
+  Slack won't be visible via the MCP `get_graph` tool until we reintroduce
+  a persistent store. To test cross-surface retrieval today, either
+  produce and consume via MCP inside one process, or wait for the
+  persistence toggle.
 - `SLACK_USER_TOKEN` needs the `search:read.*` scopes (same as Path B).
 - One LLM provider key is enough — same `ACTIVE_LLM` semantics as everywhere else.
 

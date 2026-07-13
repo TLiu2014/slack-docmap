@@ -1,0 +1,22 @@
+# Deployment compose file — used on the GCE VM.
+# One service. In-memory graph store (see server/src/store.ts) — no
+# database, no persistence. Graphs live only for the container lifetime.
+
+services:
+  app:
+    image: ${IMAGE}
+    container_name: docmap-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./app.env
+    environment:
+      PORT: 3000
+      UI_BASE_URL: ${UI_BASE_URL}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

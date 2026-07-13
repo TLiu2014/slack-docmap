@@ -61,11 +61,15 @@ rules ask for a sandbox specifically.
 
 ## Devpost submission fields
 
+- **Live deployment:** `http://136.112.234.125:3000` — landing page, docs,
+  and interactive viewer. Runs on a GCE `e2-micro` VM (always-free tier)
+  in the personal `atlas-orbit-hosting` GCP project. See
+  [deployment.md](./deployment.md) for the build/push/run playbook.
 - **Sandbox URL:** `https://<name>-sandbox.slack.com` (or your fallback
   workspace URL).
 - **How to test:** *"Sign in → open `#docmap-demo` → run `/docmap quick`.
-  Report is DM'd to you by @DocMap. Click **Open interactive map** for the
-  React Flow diagram."*
+  Report is DM'd to you by @DocMap. Click **Open interactive map** — it
+  opens the live deployment above."*
 - **Architecture diagram:** attach the exported PNG/SVG rendered from
   [architecture.md](./architecture.md).
 - **Video (~3 min):** suggested flow —
