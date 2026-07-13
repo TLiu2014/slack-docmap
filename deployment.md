@@ -27,7 +27,6 @@ gcloud config list --format="value(core.project,core.account)"
 # Enable the APIs the deploy needs (safe to re-run).
 gcloud services enable \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com \
   compute.googleapis.com
 
 # Create an Artifact Registry repo for the image (one-time).
@@ -43,8 +42,9 @@ gcloud artifacts repositories create "$AR_REPO" \
 
 ## 1. Build & push the image (repeat on every code change)
 
-Cloud Build reads `Dockerfile` at the repo root and pushes the image to
-Artifact Registry. Runs entirely on GCP — no local Docker needed.
+Build **locally** with `docker build`, then push to Artifact Registry.
+Keeps compute off Cloud Build (matches the pattern used for
+`gemini-nosql-data-wrangler`).
 
 ```bash
 export PROJECT_ID=$(gcloud config get-value project)
@@ -52,11 +52,29 @@ export REGION=us-central1
 export AR_REPO=docmap
 export IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/app:latest"
 
-gcloud builds submit . --tag "$IMAGE"
+# One-time: authenticate the local Docker CLI against Artifact Registry.
+gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+# --platform matters on Apple Silicon: the GCE VM runs linux/amd64.
+docker build --platform linux/amd64 -t "$IMAGE" .
+
+# (Optional) smoke-test locally before pushing.
+# The app needs Slack + LLM tokens; simplest is --env-file server/.env.
+# The container also needs a DATABASE_URL that resolves — for a quick
+# smoke test, an in-memory sqlite works after regenerating the client;
+# see § Troubleshooting.
+# docker run --rm -p 3000:3000 --env-file server/.env "$IMAGE"
+
+docker push "$IMAGE"
 ```
 
-Expect ~4-6 minutes (workspace install + Vite build + TypeScript compile
-+ Prisma generate). Subsequent builds are faster thanks to layer caching.
+Expect ~4–6 minutes for a clean build (workspace install + Vite build +
+TypeScript compile + Prisma generate). Subsequent builds are much
+faster thanks to Docker's layer caching.
+
+**Requirements:** Docker Desktop running locally, `.dockerignore` at
+repo root (already included — excludes `**/node_modules` so the
+container's fresh install isn't overwritten by your macOS/arm64 modules).
 
 ---
 
@@ -215,8 +233,9 @@ gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
 ## 5. Re-deploy on code change
 
 ```bash
-# 1. Rebuild the image.
-gcloud builds submit . --tag "$IMAGE"
+# 1. Rebuild + push locally.
+docker build --platform linux/amd64 -t "$IMAGE" .
+docker push "$IMAGE"
 
 # 2. On the VM, pull + restart.
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command="\
@@ -246,8 +265,10 @@ Postgres data persists across restarts (named volume `postgres-data`).
 
 ## Troubleshooting
 
-- **`gcloud builds submit` fails with `unauthorized`** — you're likely on
-  the wrong gcloud config. Re-run `direnv allow` and confirm with
+- **`docker push` fails with `unauthorized`** — the local Docker CLI
+  isn't authed against Artifact Registry. Re-run
+  `gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet`
+  and confirm you're on the personal gcloud config with
   `gcloud config list`.
 - **App container restarts in a loop** — check `sudo docker compose logs app`.
   Common causes: `SLACK_BOT_TOKEN` missing from uploaded `.env`, or

@@ -1,0 +1,32 @@
+# Don't ship local node_modules into the image — they contain platform-specific
+# binaries (arm64 from macOS, native modules) and would overwrite the fresh
+# linux/amd64 install the Dockerfile does inside the build. Same for build
+# outputs and local dev state.
+
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+
+# Local secrets and dev artefacts
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+
+# Local SQLite databases (dev only)
+**/prisma/dev.db
+**/prisma/dev.db-journal
+
+# VCS + IDE
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Docs / build artefacts the image doesn't need
+ui/dist
+server/dist
+*.md
+!README.md

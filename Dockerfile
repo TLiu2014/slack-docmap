@@ -14,7 +14,7 @@
 #   3. runtime         → node:20-alpine + prod deps + both outputs
 
 # ─── 1. UI builder ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS ui-builder
+FROM node:22-alpine AS ui-builder
 RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 WORKDIR /repo
 
@@ -28,7 +28,7 @@ COPY ui ./ui
 RUN pnpm --filter @slack-docmap/ui run build
 
 # ─── 2. Server builder ─────────────────────────────────────────────────────
-FROM node:20-alpine AS server-builder
+FROM node:22-alpine AS server-builder
 RUN corepack enable && corepack prepare pnpm@11.1.0 --activate
 WORKDIR /repo
 
@@ -36,21 +36,23 @@ COPY pnpm-workspace.yaml package.json .npmrc* ./
 COPY server/package.json ./server/
 COPY ui/package.json ./ui/
 
+# Copy the Prisma schema BEFORE install so the server's `postinstall`
+# hook (which runs `prisma generate`) can find it. Also swap the
+# datasource to Postgres now — local dev keeps SQLite via the unchanged
+# schema on disk; the image runs against the compose stack's Postgres.
+COPY server/prisma ./server/prisma
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' server/prisma/schema.prisma
+
 RUN pnpm install --filter @slack-docmap/server... --frozen-lockfile=false
 
 COPY server ./server
-
-# Swap Prisma datasource for the deployed build. Local dev keeps SQLite
-# via the unchanged schema; the image runs against Postgres in the
-# docker-compose stack (see docker-compose.yml → postgres service).
-RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' server/prisma/schema.prisma \
- && pnpm --filter @slack-docmap/server run build
+RUN pnpm --filter @slack-docmap/server run build
 
 # Prune to production-only deps for the server workspace.
-RUN pnpm --filter @slack-docmap/server deploy --prod /out
+RUN pnpm --filter @slack-docmap/server deploy --prod --legacy /out
 
 # ─── 3. Runtime ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000

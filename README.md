@@ -1,6 +1,6 @@
-# slack-docmap
+# DocMap
 
-A Slack app that scans channel history for shared documents, asks an LLM (Gemini / OpenAI / Claude / Qwen) to extract a structured graph of who shared what and how docs relate, then renders the result as a Markdown summary + interactive React Flow canvas.
+A Slack app that scans channel history for shared document links, asks an LLM (Gemini / OpenAI / Claude / Qwen) to extract a structured graph of who shared what and how docs relate, then renders the result as a Markdown summary + interactive React Flow canvas.
 
 > **Slack API surface** — DocMap was built and verified against Slack's **Real-Time Search API** (`assistant.search.context`) on a personal workspace. Slack Developer Program sandboxes don't enable the tier that endpoint requires (`feature_not_enabled`), so `main` uses the classic `search.messages` endpoint for compatibility with the hackathon sandbox. The full RTS implementation lives on the [`rts-api`](https://github.com/TLiu2014/slack-docmap/tree/rts-api) branch and can be re-activated on any RTS-eligible workspace with no other code changes.
 
