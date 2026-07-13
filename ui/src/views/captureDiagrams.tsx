@@ -67,8 +67,23 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
   }
 
   const host = document.createElement('div');
-  host.style.cssText =
-    `position:fixed;left:-100000px;top:0;width:${CAPTURE_WIDTH}px;height:${CAPTURE_HEIGHT}px;background:#ffffff;`;
+  // Positioning trick: keep the container INSIDE the viewport (so the browser
+  // actually runs layout + ResizeObserver on it) but visually inert. Using
+  // `left:-100000px` used to work but some Chromium builds skip layout for
+  // fully off-screen fixed elements, which starves React Flow's node-measured
+  // signal and makes every capture come back "unavailable".
+  host.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:0',
+    `width:${CAPTURE_WIDTH}px`,
+    `height:${CAPTURE_HEIGHT}px`,
+    'background:#ffffff',
+    'opacity:0.001',       // essentially invisible; keeps layout live
+    'pointer-events:none', // don't intercept clicks
+    'z-index:-9999',       // sit behind everything
+    'contain:strict',      // paint-time isolation
+  ].join(';') + ';';
   document.body.appendChild(host);
   const root = createRoot(host);
 
@@ -86,20 +101,33 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
     };
 
     const onInit = async (instance: ReactFlowInstance) => {
+      console.debug(`[print] ${mode}: onInit fired, expected=${layout.nodes.length} nodes`);
       try {
         const ready = await waitForLayout(instance, layout.nodes.length, 8000);
         if (!ready) {
-          console.warn(`[print] ${mode} view: layout not ready within 8s`);
+          const nodes = instance.getNodes();
+          const measured = nodes.filter((n) => {
+            const m = (n as unknown as { measured?: { width?: number } }).measured;
+            return typeof m?.width === 'number' && m.width > 0;
+          }).length;
+          console.warn(
+            `[print] ${mode}: layout not ready within 8s. store has ${nodes.length}/${layout.nodes.length} nodes, ${measured} measured.`,
+          );
           return finish(null);
         }
+        console.debug(`[print] ${mode}: layout ready, calling fitView`);
         // fitView is async in v12 — resolves after the viewport transform has
         // been applied. Await it so we don't rasterize a stale frame.
         await instance.fitView({ padding: 0.1, duration: 0 });
         await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
         const el = host.querySelector('.react-flow') as HTMLElement | null;
-        if (!el) return finish(null);
+        if (!el) {
+          console.warn(`[print] ${mode}: no .react-flow element in host`);
+          return finish(null);
+        }
 
+        console.debug(`[print] ${mode}: rasterizing`);
         const dataUrl = await toPng(el, {
           backgroundColor: '#ffffff',
           pixelRatio: 2,
@@ -107,6 +135,7 @@ function captureView(mode: ViewMode, graph: DocmapGraph): Promise<string | null>
           height: CAPTURE_HEIGHT,
           filter: withoutChrome,
         });
+        console.debug(`[print] ${mode}: captured ${dataUrl.length} chars`);
         finish(dataUrl);
       } catch (err) {
         console.error(`[print] capture failed for ${mode} view:`, err);
